@@ -9,7 +9,7 @@ The Jetson's JetPack is Ubuntu 22.04 (→ native ROS2 Humble); the PC is 26.04 (
 ROS2 distros don't reliably talk across versions, so instead of fighting the host OSes we
 **pin one distro (Humble) in a container** on both machines. The host just runs Docker. This
 is also the cleanest way to run robotics software in production — reproducible, no "works on
-my machine," and it's the containerization skill (PLAT 101) the roadmap calls for.
+my machine."
 
 ## Architecture
 
