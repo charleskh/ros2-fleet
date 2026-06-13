@@ -1,0 +1,28 @@
+# Fleet ROS2 — same file on the PC and the Jetson. Build + run with:
+#   docker compose build
+#   docker compose run --rm ros2                      # interactive shell, ROS sourced
+#   docker compose run --rm ros2 ros2 run demo_nodes_cpp talker
+#
+# network_mode: host is what lets DDS discover nodes on OTHER machines across the LAN.
+
+services:
+  ros2:
+    build: .
+    image: fleet-ros2:humble
+    network_mode: host                 # required for cross-machine ROS2 discovery
+    environment:
+      - ROS_DOMAIN_ID=42               # MUST match on every machine on the LAN
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp   # pin the same DDS impl everywhere
+    volumes:
+      - ./ros2_ws:/ros2_ws             # your packages persist on the host
+    stdin_open: true                   # docker run -i
+    tty: true                          # docker run -t
+    command: bash
+
+    # --- uncomment when you need them ---
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0     # give the container the ESP32/serial port
+    # On the JETSON, to use the GPU (Isaac ROS later), add:
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all

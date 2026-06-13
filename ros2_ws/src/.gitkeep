@@ -1,0 +1,2 @@
+# Your ROS2 packages go in this src/ directory.
+# Build from inside the container with:  colcon build  (run from /ros2_ws)
