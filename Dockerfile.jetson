@@ -17,16 +17,28 @@
 
 FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
 
+# The dustynv base ships a ROS apt signing key that has since EXPIRED
+# (EXPKEYSIG F42ED6FBAB17C654 — Open Robotics rotated its key), so packages.ros.org fails
+# apt's signature check. Refresh the key from ROS's canonical source FIRST, then install.
+# We never disable verification permanently: --allow-unauthenticated is used only to bootstrap
+# curl/ca-certificates from the (already-trusted) Ubuntu repos, then the fresh key does its job.
+#
 # cv_bridge (numpy <-> sensor_msgs/Image) + image_transport + colcon to build our packages.
 # We do NOT apt-install python3-opencv: the base image already ships a CUDA+GStreamer OpenCV,
 # and a second apt copy would shadow it. (If `import cv2` is missing GStreamer at run time,
 # that's the one thing to revisit — verify with the smoke test in the docs before adding it.)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN set -eux; \
+    apt-get update -o Acquire::AllowInsecureRepositories=true; \
+    apt-get install -y --no-install-recommends --allow-unauthenticated curl ca-certificates; \
+    curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+        -o /usr/share/keyrings/ros-archive-keyring.gpg; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
         ros-humble-cv-bridge \
         ros-humble-image-transport \
         python3-colcon-common-extensions \
-        nano \
-    && rm -rf /var/lib/apt/lists/*
+        nano; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ros2_ws
 
