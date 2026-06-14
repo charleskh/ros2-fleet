@@ -15,6 +15,7 @@ from gi.repository import Gst, GstApp  # noqa: E402  (must follow require_versio
 
 import rclpy  # noqa: E402
 from rclpy.node import Node  # noqa: E402
+from rclpy.qos import qos_profile_sensor_data  # noqa: E402
 from sensor_msgs.msg import Image  # noqa: E402
 
 
@@ -39,10 +40,10 @@ class CsiCameraNode(Node):
         super().__init__("csi_camera")
 
         self.declare_parameter("sensor_id", 0)
-        self.declare_parameter("capture_width", 1920)
-        self.declare_parameter("capture_height", 1080)
-        self.declare_parameter("display_width", 1920)
-        self.declare_parameter("display_height", 1080)
+        self.declare_parameter("capture_width", 1280)
+        self.declare_parameter("capture_height", 720)
+        self.declare_parameter("display_width", 1280)
+        self.declare_parameter("display_height", 720)
         self.declare_parameter("framerate", 30)
         self.declare_parameter("flip_method", 0)  # 0=none, 2=180deg (cam mounted upside down)
         self.declare_parameter("frame_id", "csi_camera")
@@ -66,7 +67,10 @@ class CsiCameraNode(Node):
             raise RuntimeError("Failed to set the GStreamer pipeline to PLAYING")
 
         self.pull_timeout_ns = int(0.5 * Gst.SECOND)
-        self.pub = self.create_publisher(Image, topic, 10)
+        # Sensor QoS = best-effort, keep-last: drop stale frames rather than retransmit. Reliable
+        # QoS on multi-MB images collapses over a LAN (retransmit storms). Subscribers must also
+        # use best-effort to match (e.g. `ros2 topic hz <t> --qos-reliability best_effort`).
+        self.pub = self.create_publisher(Image, topic, qos_profile_sensor_data)
         self.timer = self.create_timer(1.0 / float(fps), self.tick)
         self.get_logger().info(f"Publishing BGR frames on '{topic}' at {fps} fps")
 
@@ -114,13 +118,18 @@ def main(args=None):
     try:
         node = CsiCameraNode()
         rclpy.spin(node)
-    except (KeyboardInterrupt, RuntimeError) as exc:
-        if node:
-            node.get_logger().info(f"Shutting down: {exc}")
+    except KeyboardInterrupt:
+        pass
+    except RuntimeError as exc:
+        if node is not None:
+            node.get_logger().error(f"Camera node error: {exc}")
+        else:
+            print(f"Camera node failed to start: {exc}")
     finally:
-        if node:
+        if node is not None:
             node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():           # the SIGINT handler may have already shut down the context
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
