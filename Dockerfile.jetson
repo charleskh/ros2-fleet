@@ -60,11 +60,12 @@ RUN set -eux; \
 # the header for why this does NOT reintroduce the M2 double-free (different tier, never overlaid).
 #
 # Repo: the host's own L4T apt source (repo.download.nvidia.com/jetson/common r36.5). apt verifies
-# the repo's InRelease, which is signed by key 0D296FFB880FB004 — NOT jetson-ota-public (A9996195),
-# and NOT the l4t-cuda-tegra C5324BC1 keyring (that one is for NVIDIA's *local* CUDA installer repo,
-# not this network repo). Fetching a public .asc would fail NO_PUBKEY 0D296FFB880FB004, so we export
+# the repo's InRelease, signed by key id 0D296FFB880FB004 — which turns out to be the SIGNING SUBKEY
+# of the jetson-ota-public key (primary fp ...E6543461A9996195). NOT the l4t-cuda-tegra C5324BC1
+# keyring (that one is for NVIDIA's *local* CUDA installer repo, not this network repo). We export
 # the key from the host's own trust store (where it already verifies this repo) into the build
-# context and trust the repo via signed-by. Stage it once on hyperion before building:
+# context and trust the repo via signed-by. Stage it once on hyperion before building (exporting by
+# the subkey id pulls the whole key — primary + subkeys):
 #   apt-key export 0D296FFB880FB004 2>/dev/null | gpg --dearmor > jetson/nvidia-jetson-repo.gpg
 #
 # Packages (runtime only — no nvcc/dev; the torch wheels are prebuilt, nothing compiles here):
@@ -93,15 +94,17 @@ RUN set -eux; \
 ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64
 
 # PyTorch + torchvision from NVIDIA's JetPack-6 / CUDA-12.6 wheel index (jetson-ai-lab). These are
-# the aarch64 Orin-built, CUDA-enabled wheels; generic PyPI torch on aarch64 is CPU-only and would
-# silently disable the GPU. --index-url makes jetson the PRIMARY (so torch/torchvision come from
-# there); --extra-index-url adds PyPI for the pure-python deps (sympy, jinja2, filelock, …).
-# VERSION-COLLISION TRAP: if a PyPI CPU wheel shares the jetson wheel's version number, pip can pick
-# the wrong one — Rung 0's verify step is `torch.cuda.is_available()`; if it's False, pin the exact
-# jetson wheel version here. Unpinned first pass to discover what the index currently serves.
+# the aarch64 Orin-built, CUDA-12.6 wheels.
+#
+# VERSION-COLLISION TRAP (hit on the first build): with PyPI also in the pool (--extra-index-url),
+# pip pooled both indexes and picked PyPI's HIGHER-versioned `torch 2.12.0+cu130` — a CUDA-13 build
+# whose driver requirement (13.0) the Jetson's 12.6 driver can't meet → `CUDA available: False`,
+# "driver too old". Fix: make jetson the SOLE index (--index-url, no --extra-index-url) so PyPI's
+# torch can't enter the pool. This index is built for jp6 and also carries the deps (numpy, pillow,
+# sympy, …), so resolution still completes. Unpinned for now (serves the index's latest cu126 wheel);
+# pin the exact version once Rung 1 confirms a known-good one.
 RUN pip3 install --no-cache-dir \
         --index-url https://pypi.jetson-ai-lab.dev/jp6/cu126 \
-        --extra-index-url https://pypi.org/simple \
         torch torchvision
 
 WORKDIR /ros2_ws
