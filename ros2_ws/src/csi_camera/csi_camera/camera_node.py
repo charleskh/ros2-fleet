@@ -19,15 +19,20 @@ from rclpy.qos import qos_profile_sensor_data  # noqa: E402
 from sensor_msgs.msg import Image  # noqa: E402
 
 
-def gst_pipeline(sensor_id, cap_w, cap_h, fps, flip_method, disp_w, disp_h):
+def gst_pipeline(sensor_id, cap_w, cap_h, flip_method, disp_w, disp_h):
     """nvarguscamerasrc (Argus/ISP) -> nvvidconv (GPU convert + optional flip) -> BGR -> appsink.
 
     appsink ``max-buffers=1 drop=true`` keeps us on the latest frame (low latency); ``sync=false``
     lets it deliver as fast as captured rather than throttling to the clock.
+
+    We deliberately do NOT pin a framerate on the sensor caps: some resolutions only have a 60 fps
+    sensor mode (e.g. 1280x720), and requesting 30 fps there matches no mode, so Argus delivers no
+    frames at all. Let the sensor run at its native rate; our publish timer + ``drop=true`` set the
+    effective output rate.
     """
     return (
         f"nvarguscamerasrc sensor-id={sensor_id} ! "
-        f"video/x-raw(memory:NVMM),width={cap_w},height={cap_h},framerate={fps}/1 ! "
+        f"video/x-raw(memory:NVMM),width={cap_w},height={cap_h} ! "
         f"nvvidconv flip-method={flip_method} ! "
         f"video/x-raw,width={disp_w},height={disp_h},format=BGRx ! "
         f"videoconvert ! video/x-raw,format=BGR ! "
@@ -57,7 +62,7 @@ class CsiCameraNode(Node):
         Gst.init(None)
         pipeline_str = gst_pipeline(
             g("sensor_id"), g("capture_width"), g("capture_height"),
-            fps, g("flip_method"), g("display_width"), g("display_height"),
+            g("flip_method"), g("display_width"), g("display_height"),
         )
         self.get_logger().info(f"Opening CSI camera:\n{pipeline_str}")
 
