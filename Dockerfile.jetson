@@ -1,0 +1,37 @@
+# Jetson (hyperion) ROS2 image — L4T-based, so it CAN drive the CSI camera and GPU.
+#
+# Unlike the plain ./Dockerfile (used by caliban), this builds FROM an NVIDIA L4T R36
+# ROS2 Humble image from the `jetson-containers` project. That base carries the Jetson
+# multimedia stack (Argus / nvarguscamerasrc) and a CUDA-enabled OpenCV — exactly what
+# the camera node (and later GPU YOLO) need, and what stock ros:humble lacks.
+#
+# Host is L4T R36.5; the latest Humble ros-base tag is r36.3.0. Within the R36 series
+# that's fine: the `runtime: nvidia` setting mounts the HOST's driver/CUDA libs into the
+# container at run time, so the container userspace just has to be the same R36 major.
+#
+# Build ONLY on the Jetson, via the matching compose service:
+#   docker compose build ros2-jetson
+#
+# Pairs with the `ros2-jetson` service in docker-compose.yml, which grants run-time access
+# to the GPU (runtime: nvidia), the host camera daemon (/tmp/argus_socket), and /dev/video0.
+
+FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
+
+# cv_bridge (numpy <-> sensor_msgs/Image) + image_transport + colcon to build our packages.
+# We do NOT apt-install python3-opencv: the base image already ships a CUDA+GStreamer OpenCV,
+# and a second apt copy would shadow it. (If `import cv2` is missing GStreamer at run time,
+# that's the one thing to revisit — verify with the smoke test in the docs before adding it.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ros-humble-cv-bridge \
+        ros-humble-image-transport \
+        python3-colcon-common-extensions \
+        nano \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ros2_ws
+
+# Source ROS (and the built workspace, once it exists) in every interactive shell.
+RUN echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc \
+    && echo '[ -f /ros2_ws/install/setup.bash ] && source /ros2_ws/install/setup.bash' >> /root/.bashrc
+
+CMD ["bash"]

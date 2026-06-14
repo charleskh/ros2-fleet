@@ -1,12 +1,16 @@
-# Fleet ROS2 image — runs the same ROS2 Humble on the PC (amd64) and Jetson (arm64).
+# Plain Fleet ROS2 image — stock ROS2 Humble, NO GPU and NO Jetson multimedia stack.
+# Used by the `ros2` service for non-Jetson hosts (caliban/amd64) and for any node that
+# doesn't need the camera or GPU: demo nodes, telemetry, teleop, fleet tooling.
 #
-# Build this ON EACH MACHINE (`docker compose build`). The base image is multi-arch,
-# so the PC build produces an amd64 image and the Jetson build produces an arm64 image
-# automatically — no cross-compiling needed for now.
+# >>> The Jetson (hyperion) does NOT build this file. <<<  It needs the CSI camera and the
+# GPU, which this stock image can't provide — it uses Dockerfile.jetson (an NVIDIA L4T base)
+# via the `ros2-jetson` service instead. Both images join the same ROS2 graph (domain 10).
 #
-# Why Humble: it's the distro the Jetson's JetPack (Ubuntu 22.04) lines up with, it has
-# the widest package/arm64 support, and it's what NVIDIA Isaac ROS targets. Containerizing
-# it means the host OS (your 26.04 PC, the Jetson's 22.04) no longer has to match.
+# Build here (caliban):  docker compose build ros2
+#
+# Why Humble: it matches the Jetson's JetPack (Ubuntu 22.04), has the widest arm64 package
+# support, and is what NVIDIA Isaac ROS targets — so the whole fleet standardizes on it.
+# Containerizing it means the host OS (caliban's 26.04, the Jetson's 22.04) no longer matters.
 
 FROM ros:humble-ros-base
 

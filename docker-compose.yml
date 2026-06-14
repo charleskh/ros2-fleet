@@ -19,10 +19,33 @@ services:
     tty: true                          # docker run -t
     command: bash
 
-    # --- uncomment when you need them ---
+  # --- Jetson (hyperion) ONLY: L4T image with camera + GPU access ---
+  # The plain `ros2` service above is for caliban/amd64. The Jetson uses THIS service,
+  # built from Dockerfile.jetson (an NVIDIA L4T base). Same ROS2 graph (domain 10) — just
+  # the variant that can reach the CSI camera and the GPU. Build + run ONLY on the Jetson:
+  #   docker compose build ros2-jetson
+  #   docker compose run --rm ros2-jetson
+  ros2-jetson:
+    build:
+      context: .
+      dockerfile: Dockerfile.jetson    # L4T-based, unlike the plain ./Dockerfile
+    image: fleet-ros2:l4t
+    runtime: nvidia                    # GPU + mounts the host's CUDA/multimedia libs in
+    network_mode: host                 # cross-machine ROS2 discovery
+    environment:
+      - ROS_DOMAIN_ID=10               # MUST match on every machine on the LAN
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    volumes:
+      - ./ros2_ws:/ros2_ws             # your packages persist on the host
+      - /tmp/argus_socket:/tmp/argus_socket   # talk to the host's nvargus-daemon (CSI camera)
+    devices:
+      - /dev/video0:/dev/video0        # the IMX219 sensor node
+    stdin_open: true
+    tty: true
+    command: bash
+
+    # --- ESP32 / serial, for motor control later ---
     # devices:
-    #   - /dev/ttyUSB0:/dev/ttyUSB0     # give the container the ESP32/serial port
-    # On the JETSON, to use the GPU (Isaac ROS later), add:
-    # runtime: nvidia
-    # environment:
-    #   - NVIDIA_VISIBLE_DEVICES=all
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
