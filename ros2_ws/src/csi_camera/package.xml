@@ -12,8 +12,10 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>cv_bridge</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
+  <!-- cv2 (OpenCV) comes from the Jetson L4T base image's CUDA build; it is deliberately
+       NOT declared here. The rosdep key python3-opencv would apt-install Ubuntu's OpenCV,
+       which conflicts with the base's. The node packs sensor_msgs/Image by hand, so there
+       is no cv_bridge dependency either. -->
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

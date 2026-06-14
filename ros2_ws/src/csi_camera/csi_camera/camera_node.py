@@ -8,7 +8,6 @@ capability, see datasmith docs/phase1-hyperion-perception.md).
 """
 import cv2
 import rclpy
-from cv_bridge import CvBridge
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 
@@ -68,7 +67,6 @@ class CsiCameraNode(Node):
             )
             raise RuntimeError("cv2.VideoCapture failed to open the CSI camera")
 
-        self.bridge = CvBridge()
         self.pub = self.create_publisher(Image, topic, 10)
         self.timer = self.create_timer(1.0 / float(fps), self.tick)
         self.get_logger().info(
@@ -80,9 +78,20 @@ class CsiCameraNode(Node):
         if not ok:
             self.get_logger().warn("Frame grab failed", throttle_duration_sec=2.0)
             return
-        msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
+        # Pack the BGR numpy frame into sensor_msgs/Image by hand. This is exactly what
+        # cv_bridge.cv2_to_imgmsg(frame, "bgr8") does internally — done directly so we
+        # don't pull Ubuntu's libopencv-dev (cv_bridge's dependency), which conflicts with
+        # the L4T base image's hand-built CUDA OpenCV. Capture still uses the base's cv2.
+        h, w, channels = frame.shape
+        msg = Image()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self.frame_id
+        msg.height = h
+        msg.width = w
+        msg.encoding = "bgr8"
+        msg.is_bigendian = 0
+        msg.step = w * channels          # bytes per row = width * 3 channels * 1 byte
+        msg.data = frame.tobytes()
         self.pub.publish(msg)
 
     def destroy_node(self):
