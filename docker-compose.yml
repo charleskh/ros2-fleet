@@ -10,6 +10,12 @@ services:
     build: .
     image: fleet-ros2:humble
     network_mode: host                 # required for cross-machine ROS2 discovery
+    ipc: host                          # share the host's /dev/shm so FastDDS shared-memory
+                                       # transport works BETWEEN containers on the same host.
+                                       # network_mode:host alone shares the network but each
+                                       # container keeps its own /dev/shm; FastDDS picks SHM
+                                       # for same-host peers, so without this discovery succeeds
+                                       # but data (esp. large Image buffers) never arrives.
     environment:
       - ROS_DOMAIN_ID=10               # MUST match on every machine on the LAN
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp   # pin the same DDS impl everywhere
@@ -31,6 +37,9 @@ services:
       dockerfile: Dockerfile.jetson    # L4T-based, unlike the plain ./Dockerfile
     image: fleet-ros2:l4t
     network_mode: host                 # cross-machine ROS2 discovery
+    ipc: host                          # share host /dev/shm for FastDDS SHM transport between
+                                       # containers (camera node <-> foxglove_bridge, both here).
+                                       # See the ros2 service above for the full why.
     environment:
       - ROS_DOMAIN_ID=10               # MUST match on every machine on the LAN
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
