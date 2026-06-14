@@ -11,7 +11,7 @@ services:
     image: fleet-ros2:humble
     network_mode: host                 # required for cross-machine ROS2 discovery
     environment:
-      - ROS_DOMAIN_ID=42               # MUST match on every machine on the LAN
+      - ROS_DOMAIN_ID=10               # MUST match on every machine on the LAN
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp   # pin the same DDS impl everywhere
     volumes:
       - ./ros2_ws:/ros2_ws             # your packages persist on the host

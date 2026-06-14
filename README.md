@@ -18,7 +18,7 @@ my machine."
    └─ docker: fleet-ros2:humble        └─ docker: fleet-ros2:humble
         (amd64, built here)                 (arm64, built here)
             │                                   │
-            └──────── same LAN, ROS_DOMAIN_ID=42, --network host ────────┘
+            └──────── same LAN, ROS_DOMAIN_ID=10, --network host ────────┘
                          DDS auto-discovery across machines
 ```
 
@@ -71,7 +71,7 @@ source install/setup.bash            # (already auto-sourced in new shells)
 
 ## Gotchas
 
-- `ROS_DOMAIN_ID` must be identical on every machine (here: **42**), and stay ≤ 101.
+- `ROS_DOMAIN_ID` must be identical on every machine (here: **10**), and stay ≤ 101.
 - Both machines must be on the **same subnet** (WiFi + wired on one router is fine; guest
   networks / AP isolation will block discovery).
 - `network_mode: host` works on Linux hosts (your PC + Jetson). It does *not* behave the
