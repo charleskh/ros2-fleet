@@ -96,16 +96,16 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64
 # PyTorch + torchvision from NVIDIA's JetPack-6 / CUDA-12.6 wheel index (jetson-ai-lab). These are
 # the aarch64 Orin-built, CUDA-12.6 wheels.
 #
-# VERSION-COLLISION TRAP (hit on the first build): with PyPI also in the pool (--extra-index-url),
-# pip pooled both indexes and picked PyPI's HIGHER-versioned `torch 2.12.0+cu130` — a CUDA-13 build
-# whose driver requirement (13.0) the Jetson's 12.6 driver can't meet → `CUDA available: False`,
-# "driver too old". Fix: make jetson the SOLE index (--index-url, no --extra-index-url) so PyPI's
-# torch can't enter the pool. This index is built for jp6 and also carries the deps (numpy, pillow,
-# sympy, …), so resolution still completes. Unpinned for now (serves the index's latest cu126 wheel);
-# pin the exact version once Rung 1 confirms a known-good one.
+# DOMAIN NOTE: the index lives at jetson-ai-lab.IO (the older .DEV host is dead → DNS "Name or
+# service not known"). On the first build that .dev failure was MASKED: --extra-index-url put PyPI
+# in the pool, so when the jetson index didn't resolve, pip silently fell back to PyPI and pulled
+# `torch 2.12.0+cu130` — a CUDA-13 build the Jetson's 12.6 driver can't run (CUDA available: False).
+# Fix: correct host (.io) + jetson as the SOLE index (no --extra-index-url, so a future outage hard-
+# fails loudly instead of silently grabbing an incompatible PyPI wheel). The index carries the deps
+# (numpy, pillow, sympy, …) too, so resolution completes. Pinned to the documented jp6/cu126 pair.
 RUN pip3 install --no-cache-dir \
-        --index-url https://pypi.jetson-ai-lab.dev/jp6/cu126 \
-        torch torchvision
+        --index-url https://pypi.jetson-ai-lab.io/jp6/cu126 \
+        torch==2.8.0 torchvision==0.23.0
 
 WORKDIR /ros2_ws
 
