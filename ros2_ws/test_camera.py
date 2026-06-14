@@ -14,9 +14,12 @@ from gi.repository import Gst, GstApp  # noqa: E402
 
 Gst.init(None)
 
+# NOTE: no framerate pin on the sensor caps — 720p is a 60-fps-only mode (Argus mode 4), so
+# requesting 30/1 matches no mode and yields zero frames. Mirror the node (commit b453ea4):
+# let the sensor run native, throttle downstream. Keep this in sync with camera_node.gst_pipeline.
 PIPELINE = (
     "nvarguscamerasrc sensor-id=0 ! "
-    "video/x-raw(memory:NVMM),width=1280,height=720,framerate=30/1 ! "
+    "video/x-raw(memory:NVMM),width=1280,height=720 ! "
     "nvvidconv ! video/x-raw,format=BGRx ! "
     "videoconvert ! video/x-raw,format=BGR ! "
     "appsink name=sink max-buffers=1 drop=true sync=false"
