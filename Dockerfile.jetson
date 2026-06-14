@@ -1,42 +1,30 @@
-# Jetson (hyperion) ROS2 image — L4T-based, so it CAN drive the CSI camera and GPU.
+# Jetson (hyperion) ROS2 image — plain ROS Humble; ALL NVIDIA/L4T libs come from the host via CDI.
 #
-# Unlike the plain ./Dockerfile (used by caliban), this builds FROM an NVIDIA L4T R36
-# ROS2 Humble image from the `jetson-containers` project. That base carries the Jetson
-# multimedia stack (Argus / nvarguscamerasrc) and a CUDA-enabled OpenCV — exactly what
-# the camera node (and later GPU YOLO) need, and what stock ros:humble lacks.
+# WHY a plain base, not a dustynv/L4T image: the host is L4T r36.5, but the dustynv L4T ROS
+# images top out at r36.3. Building FROM r36.3 bakes r36.3 NVIDIA libs into the image, while CDI
+# mounts the host's r36.5 libs over part of them — a mismatched set that double-frees in
+# nvbufsurftransform (nvvidconv) the instant a camera buffer flows (confirmed with pure gst-launch,
+# no Python). Fix: carry NO NVIDIA libs in the image, and let CDI provide the ENTIRE NVIDIA stack
+# (Argus, nvvidconv, EGL, CUDA, the GStreamer nv* plugins) from the host — one consistent r36.5 set.
 #
-# Host is L4T R36.5; the latest Humble ros-base tag is r36.3.0. Within the R36 series
-# that's fine: the `runtime: nvidia` setting mounts the HOST's driver/CUDA libs into the
-# container at run time, so the container userspace just has to be the same R36 major.
+# So this image is just Ubuntu 22.04 + ROS Humble + GStreamer + the GStreamer Python bindings.
+# The NVIDIA pieces appear at run time via the `ros2-jetson` compose service (CDI device
+# nvidia.com/gpu=all + /tmp/argus_socket + /dev/video0 + the EGL ICD env var).
 #
-# Build ONLY on the Jetson, via the matching compose service:
-#   docker compose build ros2-jetson
-#
-# Pairs with the `ros2-jetson` service in docker-compose.yml, which grants run-time access
-# to the GPU (runtime: nvidia), the host camera daemon (/tmp/argus_socket), and /dev/video0.
+# Build ONLY on the Jetson:  docker compose build ros2-jetson
 
-FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
+FROM ros:humble-ros-base
 
-# The dustynv base ships a ROS apt signing key that has since EXPIRED
-# (EXPKEYSIG F42ED6FBAB17C654 — Open Robotics rotated its key), so packages.ros.org fails
-# apt's signature check. Refresh the key from ROS's canonical source FIRST, then install.
-# We never disable verification permanently: --allow-unauthenticated is used only to bootstrap
-# curl/ca-certificates from the (already-trusted) Ubuntu repos, then the fresh key does its job.
+# The official ros:humble base also ships the now-expired ROS apt key (EXPKEYSIG F42ED6FBAB17C654);
+# refresh it before installing colcon (which comes from packages.ros.org). --allow-unauthenticated
+# is used only to bootstrap curl/ca-certificates from the trusted Ubuntu repos; the fresh key then
+# does the verifying.
 #
-# We install: colcon (build tool); libegl1 + libgles2 — the glvnd EGL/GLES *loaders*
-# (libEGL.so.1, libGLESv2.so.2) that NVIDIA's GStreamer camera plugin links against, and which
-# the slim base image lacks. The CDI spec (/etc/cdi/nvidia.yaml, generated on the host with
-# `nvidia-ctk cdi generate`) injects the NVIDIA *implementation* (libEGL_nvidia.so.0) + ICD at
-# run time; these packages provide the generic loader that dispatches to it. gstreamer1.0-tools
-# gives `gst-inspect-1.0` for debugging. gstreamer1.0-plugins-base/-good supply the `appsink`
-# and `videoconvert` elements the capture pipeline needs (the slim base has GStreamer core + the
-# NVIDIA plugins, but not these). python3-gi + the gir1.2 typelibs give the GStreamer Python
-# bindings the node uses to pull frames directly — we bypass cv2.VideoCapture, which double-frees
-# on this image. Plus nano.
-#
-# We deliberately do NOT install ros-humble-cv-bridge or python3-opencv: both pull Ubuntu's
-# libopencv-dev (4.5.4), which collides with the base image's hand-built CUDA+GStreamer OpenCV
-# and aborts dpkg. The node uses the base's cv2 and packs sensor_msgs/Image by hand instead.
+# Packages: colcon (build tool); GStreamer core + plugins-base/-good supply gst-launch, appsink,
+# videoconvert, fakesink (the non-NVIDIA elements — the nv* plugins arrive via CDI); python3-gi +
+# the gir1.2 typelibs are the GStreamer Python bindings the node pulls frames with (no OpenCV: cv2's
+# GStreamer capture double-frees); libegl1/libgles2 are the glvnd EGL/GLES loaders the NVIDIA
+# GStreamer plugins link against (CDI provides the NVIDIA impl + ICD). Plus nano.
 RUN set -eux; \
     apt-get update -o Acquire::AllowInsecureRepositories=true; \
     apt-get install -y --no-install-recommends --allow-unauthenticated curl ca-certificates; \
