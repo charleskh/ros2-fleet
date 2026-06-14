@@ -4,12 +4,19 @@
 # images top out at r36.3. Building FROM r36.3 bakes r36.3 NVIDIA libs into the image, while CDI
 # mounts the host's r36.5 libs over part of them — a mismatched set that double-frees in
 # nvbufsurftransform (nvvidconv) the instant a camera buffer flows (confirmed with pure gst-launch,
-# no Python). Fix: carry NO NVIDIA libs in the image, and let CDI provide the ENTIRE NVIDIA stack
-# (Argus, nvvidconv, EGL, CUDA, the GStreamer nv* plugins) from the host — one consistent r36.5 set.
+# no Python). Fix: carry NO *driver-tier* NVIDIA libs in the image, and let CDI provide the whole
+# driver tier (libcuda.so, Argus, nvvidconv, EGL, the GStreamer nv* plugins) from the host — one
+# consistent r36.5 set.
 #
-# So this image is just Ubuntu 22.04 + ROS Humble + GStreamer + the GStreamer Python bindings.
-# The NVIDIA pieces appear at run time via the `ros2-jetson` compose service (CDI device
-# nvidia.com/gpu=all + /tmp/argus_socket + /dev/video0 + the EGL ICD env var).
+# TIER NOTE (corrected in M3): NVIDIA's stack splits in two. The DRIVER tier above is versioned to
+# L4T (r36.5) and CDI mounts it — don't bake it. The CUDA TOOLKIT tier (libcudart, cuBLAS, cuDNN)
+# is versioned to CUDA 12.6 and CDI does NOT mount it (confirmed: empty in-container). torch needs
+# the toolkit, so M3 Rung 0 bakes it below. That is safe — the toolkit is never CDI-overlaid, so
+# the r36.3-vs-r36.5 clash that motivated this file cannot recur on toolkit libs.
+#
+# So this image is Ubuntu 22.04 + ROS Humble + GStreamer + GStreamer Python bindings (M2), plus the
+# CUDA 12.6 toolkit + PyTorch (M3). The DRIVER pieces still appear at run time via the `ros2-jetson`
+# compose service (CDI device nvidia.com/gpu=all + /tmp/argus_socket + /dev/video0 + the EGL ICD env).
 #
 # Build ONLY on the Jetson:  docker compose build ros2-jetson
 
@@ -46,6 +53,55 @@ RUN set -eux; \
         ros-humble-foxglove-bridge \
         nano; \
     rm -rf /var/lib/apt/lists/*
+
+# --- M3 Rung 0: CUDA 12.6 TOOLKIT tier + PyTorch (edge inference) -----------------------------
+# CDI gives the container the DRIVER tier (libcuda.so, r36.5) but NOT the CUDA toolkit — torch
+# can't import without libcudart/cuBLAS/cuDNN, so we bake the toolkit here. See the TIER NOTE in
+# the header for why this does NOT reintroduce the M2 double-free (different tier, never overlaid).
+#
+# Repo: the host's own L4T apt source (repo.download.nvidia.com/jetson/common r36.5). These CUDA
+# packages are signed by key C5324BC1 — a DIFFERENT key than jetson-ota-public (A9996195), which
+# signs the rest of the repo. Fetching the public .asc would fail NO_PUBKEY C5324BC1, so we vendor
+# the host's working keyring into the build context (jetson/) and trust the repo via signed-by.
+# Stage it once on hyperion before building:
+#   cp /usr/share/keyrings/l4t-cuda-tegra-C5324BC1-keyring.gpg jetson/
+#
+# Packages (runtime only — no nvcc/dev; the torch wheels are prebuilt, nothing compiles here):
+#   cuda-libraries-12-6  the CUDA 12.6 runtime meta (cudart, cuBLAS, cuFFT, cuRAND, cuSOLVER,
+#                        cuSPARSE, NVRTC, nvJitLink) — torch links all of these
+#   libcudnn9-cuda-12    cuDNN 9.3 runtime (torch/Ultralytics conv kernels)
+#   libopenblas0         torch's CPU BLAS backend (linked even when running on GPU)
+#   python3-pip          to install the wheels below
+# Pinned to the host's exact versions for reproducibility; drop the pins if the r36.5 channel
+# later rotates these out (NVIDIA sometimes keeps only the latest point release).
+COPY jetson/l4t-cuda-tegra-C5324BC1-keyring.gpg /usr/share/keyrings/
+RUN set -eux; \
+    echo 'deb [signed-by=/usr/share/keyrings/l4t-cuda-tegra-C5324BC1-keyring.gpg] https://repo.download.nvidia.com/jetson/common r36.5 main' \
+        > /etc/apt/sources.list.d/nvidia-l4t.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        cuda-libraries-12-6=12.6.11-1 \
+        libcudnn9-cuda-12=9.3.0.75-1 \
+        libopenblas0 \
+        python3-pip; \
+    rm -rf /var/lib/apt/lists/*
+
+# The jetson CUDA debs install under /usr/local/cuda-12.6; put its libdir on the loader path so the
+# torch wheel finds libcudart/cuBLAS at import (Jetson torch links SYSTEM CUDA, unlike x86 pip torch
+# which bundles its own nvidia-*-cu12 libs). cuDNN is multiarch (/usr/lib/aarch64-linux-gnu) → ldconfig.
+ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:${LD_LIBRARY_PATH}
+
+# PyTorch + torchvision from NVIDIA's JetPack-6 / CUDA-12.6 wheel index (jetson-ai-lab). These are
+# the aarch64 Orin-built, CUDA-enabled wheels; generic PyPI torch on aarch64 is CPU-only and would
+# silently disable the GPU. --index-url makes jetson the PRIMARY (so torch/torchvision come from
+# there); --extra-index-url adds PyPI for the pure-python deps (sympy, jinja2, filelock, …).
+# VERSION-COLLISION TRAP: if a PyPI CPU wheel shares the jetson wheel's version number, pip can pick
+# the wrong one — Rung 0's verify step is `torch.cuda.is_available()`; if it's False, pin the exact
+# jetson wheel version here. Unpinned first pass to discover what the index currently serves.
+RUN pip3 install --no-cache-dir \
+        --index-url https://pypi.jetson-ai-lab.dev/jp6/cu126 \
+        --extra-index-url https://pypi.org/simple \
+        torch torchvision
 
 WORKDIR /ros2_ws
 
