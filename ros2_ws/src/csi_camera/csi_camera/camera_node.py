@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """Publish a Jetson CSI camera (IMX219 via Argus) as a ROS2 Image topic.
 
-Opens ``nvarguscamerasrc`` through OpenCV's GStreamer backend, grabs BGR frames,
-and publishes them as ``sensor_msgs/Image``. Reusable on any Jetson + CSI camera —
-everything is parameterized, nothing Devastator-specific lives here (a Tier-2 fleet
-capability, see datasmith docs/phase1-hyperion-perception.md).
+Frames are pulled via GStreamer's Python bindings (gi / GstApp appsink), NOT via
+cv2.VideoCapture(CAP_GSTREAMER): OpenCV 4.8's GStreamer capture double-frees on this L4T image
+when handling the nvargus NVMM pipeline. We map the appsink buffer into bytes and pack
+sensor_msgs/Image by hand — no OpenCV in the process at all. Reusable on any Jetson + CSI camera
+(a Tier-2 fleet capability; see datasmith docs/phase1-hyperion-perception.md).
 """
-import cv2
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
+import gi
+
+gi.require_version("Gst", "1.0")
+gi.require_version("GstApp", "1.0")
+from gi.repository import Gst, GstApp  # noqa: E402  (must follow require_version)
+
+import rclpy  # noqa: E402
+from rclpy.node import Node  # noqa: E402
+from sensor_msgs.msg import Image  # noqa: E402
 
 
 def gst_pipeline(sensor_id, cap_w, cap_h, fps, flip_method, disp_w, disp_h):
-    """Build the nvarguscamerasrc -> BGR appsink pipeline OpenCV will read from.
+    """nvarguscamerasrc (Argus/ISP) -> nvvidconv (GPU convert + optional flip) -> BGR -> appsink.
 
-    nvarguscamerasrc (Argus/ISP: debayer + auto-exposure) -> NVMM frames ->
-    nvvidconv (GPU colour/format + optional flip) -> videoconvert -> BGR -> appsink.
-    ``drop=true max-buffers=1`` keeps us on the *latest* frame (low latency) rather
-    than queuing a backlog.
+    appsink ``max-buffers=1 drop=true`` keeps us on the latest frame (low latency); ``sync=false``
+    lets it deliver as fast as captured rather than throttling to the clock.
     """
     return (
         f"nvarguscamerasrc sensor-id={sensor_id} ! "
@@ -26,7 +30,7 @@ def gst_pipeline(sensor_id, cap_w, cap_h, fps, flip_method, disp_w, disp_h):
         f"nvvidconv flip-method={flip_method} ! "
         f"video/x-raw,width={disp_w},height={disp_h},format=BGRx ! "
         f"videoconvert ! video/x-raw,format=BGR ! "
-        f"appsink drop=true max-buffers=1"
+        f"appsink name=sink max-buffers=1 drop=true sync=false"
     )
 
 
@@ -34,55 +38,59 @@ class CsiCameraNode(Node):
     def __init__(self):
         super().__init__("csi_camera")
 
-        # Parameters — override at runtime without touching code, e.g.
-        #   ros2 run csi_camera camera_node --ros-args -p flip_method:=2
         self.declare_parameter("sensor_id", 0)
         self.declare_parameter("capture_width", 1920)
         self.declare_parameter("capture_height", 1080)
         self.declare_parameter("display_width", 1920)
         self.declare_parameter("display_height", 1080)
         self.declare_parameter("framerate", 30)
-        self.declare_parameter("flip_method", 0)  # 0=none, 2=180deg (if cam is mounted upside down)
+        self.declare_parameter("flip_method", 0)  # 0=none, 2=180deg (cam mounted upside down)
         self.declare_parameter("frame_id", "csi_camera")
         self.declare_parameter("topic", "image_raw")
 
-        g = lambda n: self.get_parameter(n).value
+        g = lambda n: self.get_parameter(n).value  # noqa: E731
         fps = g("framerate")
-        disp_w, disp_h = g("display_width"), g("display_height")
         self.frame_id = g("frame_id")
         topic = g("topic")
 
-        pipeline = gst_pipeline(
+        Gst.init(None)
+        pipeline_str = gst_pipeline(
             g("sensor_id"), g("capture_width"), g("capture_height"),
-            fps, g("flip_method"), disp_w, disp_h,
+            fps, g("flip_method"), g("display_width"), g("display_height"),
         )
-        self.get_logger().info(f"Opening CSI camera:\n{pipeline}")
+        self.get_logger().info(f"Opening CSI camera:\n{pipeline_str}")
 
-        self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-        if not self.cap.isOpened():
-            self.get_logger().error(
-                "Could not open the camera. Check: nvargus-daemon active on host, "
-                "/tmp/argus_socket mounted, 'runtime: nvidia' set, and OpenCV built "
-                "with GStreamer support."
-            )
-            raise RuntimeError("cv2.VideoCapture failed to open the CSI camera")
+        self.pipeline = Gst.parse_launch(pipeline_str)
+        self.appsink = self.pipeline.get_by_name("sink")
+        if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+            raise RuntimeError("Failed to set the GStreamer pipeline to PLAYING")
 
+        self.pull_timeout_ns = int(0.5 * Gst.SECOND)
         self.pub = self.create_publisher(Image, topic, 10)
         self.timer = self.create_timer(1.0 / float(fps), self.tick)
-        self.get_logger().info(
-            f"Publishing {disp_w}x{disp_h} BGR frames on '{topic}' at {fps} fps"
-        )
+        self.get_logger().info(f"Publishing BGR frames on '{topic}' at {fps} fps")
 
     def tick(self):
-        ok, frame = self.cap.read()
-        if not ok:
-            self.get_logger().warn("Frame grab failed", throttle_duration_sec=2.0)
+        sample = self.appsink.try_pull_sample(self.pull_timeout_ns)
+        if sample is None:
+            self.get_logger().warn("No frame from appsink", throttle_duration_sec=2.0)
             return
-        # Pack the BGR numpy frame into sensor_msgs/Image by hand. This is exactly what
-        # cv_bridge.cv2_to_imgmsg(frame, "bgr8") does internally — done directly so we
-        # don't pull Ubuntu's libopencv-dev (cv_bridge's dependency), which conflicts with
-        # the L4T base image's hand-built CUDA OpenCV. Capture still uses the base's cv2.
-        h, w, channels = frame.shape
+
+        struct = sample.get_caps().get_structure(0)
+        w = struct.get_value("width")
+        h = struct.get_value("height")
+
+        buf = sample.get_buffer()
+        ok, mapinfo = buf.map(Gst.MapFlags.READ)
+        if not ok:
+            self.get_logger().warn("Failed to map GStreamer buffer", throttle_duration_sec=2.0)
+            return
+        try:
+            data = bytes(mapinfo.data)   # copy the frame out before unmapping
+            size = mapinfo.size
+        finally:
+            buf.unmap(mapinfo)
+
         msg = Image()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self.frame_id
@@ -90,13 +98,13 @@ class CsiCameraNode(Node):
         msg.width = w
         msg.encoding = "bgr8"
         msg.is_bigendian = 0
-        msg.step = w * channels          # bytes per row = width * 3 channels * 1 byte
-        msg.data = frame.tobytes()
+        msg.step = size // h             # actual row stride (handles any GStreamer row padding)
+        msg.data = data
         self.pub.publish(msg)
 
     def destroy_node(self):
-        if getattr(self, "cap", None) is not None:
-            self.cap.release()
+        if getattr(self, "pipeline", None) is not None:
+            self.pipeline.set_state(Gst.State.NULL)
         super().destroy_node()
 
 

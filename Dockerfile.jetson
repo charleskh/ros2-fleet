@@ -29,8 +29,10 @@ FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
 # `nvidia-ctk cdi generate`) injects the NVIDIA *implementation* (libEGL_nvidia.so.0) + ICD at
 # run time; these packages provide the generic loader that dispatches to it. gstreamer1.0-tools
 # gives `gst-inspect-1.0` for debugging. gstreamer1.0-plugins-base/-good supply the `appsink`
-# and `videoconvert` elements OpenCV's capture pipeline needs (the slim base has GStreamer core
-# + the NVIDIA plugins, but not these). Plus nano.
+# and `videoconvert` elements the capture pipeline needs (the slim base has GStreamer core + the
+# NVIDIA plugins, but not these). python3-gi + the gir1.2 typelibs give the GStreamer Python
+# bindings the node uses to pull frames directly — we bypass cv2.VideoCapture, which double-frees
+# on this image. Plus nano.
 #
 # We deliberately do NOT install ros-humble-cv-bridge or python3-opencv: both pull Ubuntu's
 # libopencv-dev (4.5.4), which collides with the base image's hand-built CUDA+GStreamer OpenCV
@@ -48,6 +50,9 @@ RUN set -eux; \
         gstreamer1.0-tools \
         gstreamer1.0-plugins-base \
         gstreamer1.0-plugins-good \
+        python3-gi \
+        gir1.2-gstreamer-1.0 \
+        gir1.2-gst-plugins-base-1.0 \
         nano; \
     rm -rf /var/lib/apt/lists/*
 

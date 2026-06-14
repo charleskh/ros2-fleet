@@ -1,38 +1,47 @@
 #!/usr/bin/env python3
-"""Isolation test: does cv2 + GStreamer + nvargus capture work WITHOUT ROS in the process?
+"""Isolation test #2: pull frames via GStreamer's gi bindings (NO OpenCV).
 
-If this prints "DONE" with frame shapes, the double-free is a cv2<->rclpy interaction
-(import order / threading) and the fix is cheap. If this ALSO crashes with
-"double free or corruption", the problem is the cv2 + GStreamer + nvargus combo itself
-(a native library conflict) and we fix it at that layer.
+cv2.VideoCapture(CAP_GSTREAMER) double-frees on this L4T image, so the node uses gi / GstApp
+instead. This confirms the gi capture path works cleanly before we rely on it in the ROS node.
 
-Run inside the L4T container (from /ros2_ws):
     docker compose run --rm ros2-jetson python3 test_camera.py
 """
-import sys
-import numpy as np
-import cv2
+import gi
 
-print("python :", sys.version.split()[0])
-print("numpy  :", np.__version__)
-print("opencv :", cv2.__version__)
-print("gst in cv2 build:", "GStreamer" in cv2.getBuildInformation())
+gi.require_version("Gst", "1.0")
+gi.require_version("GstApp", "1.0")
+from gi.repository import Gst, GstApp  # noqa: E402
+
+Gst.init(None)
 
 PIPELINE = (
     "nvarguscamerasrc sensor-id=0 ! "
     "video/x-raw(memory:NVMM),width=1280,height=720,framerate=30/1 ! "
     "nvvidconv ! video/x-raw,format=BGRx ! "
     "videoconvert ! video/x-raw,format=BGR ! "
-    "appsink drop=true max-buffers=1"
+    "appsink name=sink max-buffers=1 drop=true sync=false"
 )
 
-print("opening pipeline (no rclpy in this process)...")
-cap = cv2.VideoCapture(PIPELINE, cv2.CAP_GSTREAMER)
-print("isOpened:", cap.isOpened())
+print("parsing pipeline (gi / GstApp, no OpenCV)...")
+pipeline = Gst.parse_launch(PIPELINE)
+sink = pipeline.get_by_name("sink")
+pipeline.set_state(Gst.State.PLAYING)
 
+print("pulling 5 frames...")
 for i in range(5):
-    ok, frame = cap.read()
-    print(f"  read {i}:", ok, None if frame is None else frame.shape)
+    sample = sink.try_pull_sample(int(2 * Gst.SECOND))
+    if sample is None:
+        print(f"  frame {i}: None (timeout)")
+        continue
+    s = sample.get_caps().get_structure(0)
+    w = s.get_value("width")
+    h = s.get_value("height")
+    buf = sample.get_buffer()
+    ok, info = buf.map(Gst.MapFlags.READ)
+    size = info.size if ok else -1
+    if ok:
+        buf.unmap(info)
+    print(f"  frame {i}: {w}x{h}, {size} bytes")
 
-cap.release()
+pipeline.set_state(Gst.State.NULL)
 print("DONE - no crash")
