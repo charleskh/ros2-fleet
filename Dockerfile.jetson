@@ -59,12 +59,13 @@ RUN set -eux; \
 # can't import without libcudart/cuBLAS/cuDNN, so we bake the toolkit here. See the TIER NOTE in
 # the header for why this does NOT reintroduce the M2 double-free (different tier, never overlaid).
 #
-# Repo: the host's own L4T apt source (repo.download.nvidia.com/jetson/common r36.5). These CUDA
-# packages are signed by key C5324BC1 — a DIFFERENT key than jetson-ota-public (A9996195), which
-# signs the rest of the repo. Fetching the public .asc would fail NO_PUBKEY C5324BC1, so we vendor
-# the host's working keyring into the build context (jetson/) and trust the repo via signed-by.
-# Stage it once on hyperion before building:
-#   cp /usr/share/keyrings/l4t-cuda-tegra-C5324BC1-keyring.gpg jetson/
+# Repo: the host's own L4T apt source (repo.download.nvidia.com/jetson/common r36.5). apt verifies
+# the repo's InRelease, which is signed by key 0D296FFB880FB004 — NOT jetson-ota-public (A9996195),
+# and NOT the l4t-cuda-tegra C5324BC1 keyring (that one is for NVIDIA's *local* CUDA installer repo,
+# not this network repo). Fetching a public .asc would fail NO_PUBKEY 0D296FFB880FB004, so we export
+# the key from the host's own trust store (where it already verifies this repo) into the build
+# context and trust the repo via signed-by. Stage it once on hyperion before building:
+#   apt-key export 0D296FFB880FB004 2>/dev/null | gpg --dearmor > jetson/nvidia-jetson-repo.gpg
 #
 # Packages (runtime only — no nvcc/dev; the torch wheels are prebuilt, nothing compiles here):
 #   cuda-libraries-12-6  the CUDA 12.6 runtime meta (cudart, cuBLAS, cuFFT, cuRAND, cuSOLVER,
@@ -74,9 +75,9 @@ RUN set -eux; \
 #   python3-pip          to install the wheels below
 # Pinned to the host's exact versions for reproducibility; drop the pins if the r36.5 channel
 # later rotates these out (NVIDIA sometimes keeps only the latest point release).
-COPY jetson/l4t-cuda-tegra-C5324BC1-keyring.gpg /usr/share/keyrings/
+COPY jetson/nvidia-jetson-repo.gpg /usr/share/keyrings/
 RUN set -eux; \
-    echo 'deb [signed-by=/usr/share/keyrings/l4t-cuda-tegra-C5324BC1-keyring.gpg] https://repo.download.nvidia.com/jetson/common r36.5 main' \
+    echo 'deb [signed-by=/usr/share/keyrings/nvidia-jetson-repo.gpg] https://repo.download.nvidia.com/jetson/common r36.5 main' \
         > /etc/apt/sources.list.d/nvidia-l4t.list; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -89,7 +90,7 @@ RUN set -eux; \
 # The jetson CUDA debs install under /usr/local/cuda-12.6; put its libdir on the loader path so the
 # torch wheel finds libcudart/cuBLAS at import (Jetson torch links SYSTEM CUDA, unlike x86 pip torch
 # which bundles its own nvidia-*-cu12 libs). cuDNN is multiarch (/usr/lib/aarch64-linux-gnu) → ldconfig.
-ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64
 
 # PyTorch + torchvision from NVIDIA's JetPack-6 / CUDA-12.6 wheel index (jetson-ai-lab). These are
 # the aarch64 Orin-built, CUDA-enabled wheels; generic PyPI torch on aarch64 is CPU-only and would
