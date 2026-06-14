@@ -30,13 +30,22 @@ services:
       context: .
       dockerfile: Dockerfile.jetson    # L4T-based, unlike the plain ./Dockerfile
     image: fleet-ros2:l4t
-    runtime: nvidia                    # GPU + mounts the host's CUDA/multimedia libs in
     network_mode: host                 # cross-machine ROS2 discovery
     environment:
       - ROS_DOMAIN_ID=10               # MUST match on every machine on the LAN
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
+    # GPU + camera/EGL/CUDA libs are injected via CDI (Container Device Interface). On
+    # JetPack 6 the old `runtime: nvidia` CSV mounts are retired; instead the host generated
+    # /etc/cdi/nvidia.yaml (`sudo nvidia-ctk cdi generate`) and we request that device here.
+    # This replaces `runtime: nvidia`, which injected nothing on this host.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              capabilities: [gpu]
+              device_ids:
+                - nvidia.com/gpu=all
     volumes:
       - ./ros2_ws:/ros2_ws             # your packages persist on the host
       - /tmp/argus_socket:/tmp/argus_socket   # talk to the host's nvargus-daemon (CSI camera)
