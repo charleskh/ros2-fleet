@@ -23,12 +23,16 @@ FROM dustynv/ros:humble-ros-base-l4t-r36.3.0
 # We never disable verification permanently: --allow-unauthenticated is used only to bootstrap
 # curl/ca-certificates from the (already-trusted) Ubuntu repos, then the fresh key does its job.
 #
-# We install ONLY colcon (the build tool) + nano. We deliberately do NOT install
-# ros-humble-cv-bridge or python3-opencv: both pull in Ubuntu's libopencv-dev (4.5.4), which
-# collides with the base image's hand-built CUDA+GStreamer OpenCV and makes dpkg abort. The
-# camera node uses the base's cv2 for capture and packs sensor_msgs/Image by hand, so neither
-# is needed. (If `import cv2` lacks GStreamer at run time, that's the one thing to revisit —
-# verify with the smoke test in the docs.)
+# We install: colcon (build tool); libegl1 + libgles2 — the glvnd EGL/GLES *loaders*
+# (libEGL.so.1, libGLESv2.so.2) that NVIDIA's GStreamer camera plugin links against, and which
+# the slim base image lacks. The CDI spec (/etc/cdi/nvidia.yaml, generated on the host with
+# `nvidia-ctk cdi generate`) injects the NVIDIA *implementation* (libEGL_nvidia.so.0) + ICD at
+# run time; these packages provide the generic loader that dispatches to it. gstreamer1.0-tools
+# gives `gst-inspect-1.0` for debugging. Plus nano.
+#
+# We deliberately do NOT install ros-humble-cv-bridge or python3-opencv: both pull Ubuntu's
+# libopencv-dev (4.5.4), which collides with the base image's hand-built CUDA+GStreamer OpenCV
+# and aborts dpkg. The node uses the base's cv2 and packs sensor_msgs/Image by hand instead.
 RUN set -eux; \
     apt-get update -o Acquire::AllowInsecureRepositories=true; \
     apt-get install -y --no-install-recommends --allow-unauthenticated curl ca-certificates; \
@@ -37,6 +41,9 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         python3-colcon-common-extensions \
+        libegl1 \
+        libgles2 \
+        gstreamer1.0-tools \
         nano; \
     rm -rf /var/lib/apt/lists/*
 
