@@ -112,6 +112,17 @@ RUN pip3 install --no-cache-dir \
         --index-url https://pypi.jetson-ai-lab.io/jp6/cu126 \
         torch==2.8.0 torchvision==0.23.0
 
+# --- M3 Rung 1: Ultralytics (YOLO) ----------------------------------------------------------
+# Provides the pretrained YOLO model + the Ultralytics-first pipeline (rungs 1-3); the manual
+# pre/post scripts under ros2_ws/rung1/ reconstruct what it does internally. From PyPI (its deps
+# live there, not the jetson index). It requires torch>=1.8 / torchvision>=0.9, which our pinned
+# 2.8.0 / 0.23.0 already satisfy, so pip should NOT reinstall/clobber the jetson GPU wheels — the
+# Rung 1 verify step re-checks `torch.cuda.is_available()` to be sure. It also pulls opencv-python,
+# used here only for imread/imwrite on SAVED images (not the GStreamer cv2 capture path that
+# double-frees on this L4T image — that constraint still holds for the live ROS node in Rung 2).
+# Unpinned for now; pin `ultralytics==<ver>` once the next build confirms a known-good combo.
+RUN pip3 install --no-cache-dir ultralytics
+
 WORKDIR /ros2_ws
 
 # Source ROS (and the built workspace, once it exists) in every interactive shell.

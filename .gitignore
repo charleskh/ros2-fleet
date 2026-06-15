@@ -11,3 +11,8 @@ __pycache__/
 # Editor / OS
 .vscode/
 .DS_Store
+
+# Rung 1 inference artifacts (images in, annotated out, downloaded model weights)
+ros2_ws/rung1/sample*.jpg
+ros2_ws/rung1/annotated_*.jpg
+*.pt
