@@ -71,11 +71,14 @@ RUN set -eux; \
 # Packages (runtime only — no nvcc/dev; the torch wheels are prebuilt, nothing compiles here):
 #   cuda-libraries-12-6  the CUDA 12.6 runtime meta (cudart, cuBLAS, cuFFT, cuRAND, cuSOLVER,
 #                        cuSPARSE, NVRTC, nvJitLink) — torch links all of these
+#   cuda-cupti-12-6      CUPTI (libcupti.so.12) — NOT in the meta above; torch dlopens it at import
+#   cuda-nvtx-12-6       NVTX (libnvToolsExt) — also separate, also pulled in by torch's profiler
 #   libcudnn9-cuda-12    cuDNN 9.3 runtime (torch/Ultralytics conv kernels)
 #   libopenblas0         torch's CPU BLAS backend (linked even when running on GPU)
 #   python3-pip          to install the wheels below
-# Pinned to the host's exact versions for reproducibility; drop the pins if the r36.5 channel
-# later rotates these out (NVIDIA sometimes keeps only the latest point release).
+# cuda-libraries/cudnn pinned to the host's exact versions for reproducibility; cupti/nvtx left
+# unpinned so apt resolves the matching 12.6 point release from the r36.5 channel. Drop the pins
+# if the channel later rotates these out (NVIDIA sometimes keeps only the latest point release).
 COPY jetson/nvidia-jetson-repo.gpg /usr/share/keyrings/
 RUN set -eux; \
     echo 'deb [signed-by=/usr/share/keyrings/nvidia-jetson-repo.gpg] https://repo.download.nvidia.com/jetson/common r36.5 main' \
@@ -83,6 +86,8 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         cuda-libraries-12-6=12.6.11-1 \
+        cuda-cupti-12-6 \
+        cuda-nvtx-12-6 \
         libcudnn9-cuda-12=9.3.0.75-1 \
         libopenblas0 \
         python3-pip; \
@@ -91,7 +96,7 @@ RUN set -eux; \
 # The jetson CUDA debs install under /usr/local/cuda-12.6; put its libdir on the loader path so the
 # torch wheel finds libcudart/cuBLAS at import (Jetson torch links SYSTEM CUDA, unlike x86 pip torch
 # which bundles its own nvidia-*-cu12 libs). cuDNN is multiarch (/usr/lib/aarch64-linux-gnu) → ldconfig.
-ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64
+ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:/usr/local/cuda-12.6/extras/CUPTI/lib64
 
 # PyTorch + torchvision from NVIDIA's JetPack-6 / CUDA-12.6 wheel index (jetson-ai-lab). These are
 # the aarch64 Orin-built, CUDA-12.6 wheels.
