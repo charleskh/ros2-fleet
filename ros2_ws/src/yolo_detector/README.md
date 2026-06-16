@@ -1,8 +1,13 @@
-# yolo_detector — M3 Rung 2
+# yolo_detector — M3 Rung 2 + Rung 3
 
-**Goal:** wrap the Rung 1 inference pipeline in a live ROS2 node. Subscribe `/image_raw` from
+**Rung 2 goal:** wrap the Rung 1 inference pipeline in a live ROS2 node. Subscribe `/image_raw` from
 `csi_camera`, run pretrained YOLO on the Orin GPU, publish `vision_msgs/Detection2DArray` on
-`/detections`. **Checkpoint:** `ros2 topic echo /detections` shows live detections off the camera.
+`/detections`. **Checkpoint:** `ros2 topic echo /detections` shows live detections off the camera. ✅
+
+**Rung 3 goal:** see it. The node also publishes an annotated `sensor_msgs/Image` on
+`/image_annotated` (boxes + labels drawn via `r.plot()`, reusing the same inference). View it in
+Foxglove on the Mac through the M2 `foxglove_bridge`. **Checkpoint:** live camera feed with bounding
+boxes in Foxglove — the M3 "wow".
 
 ## Prereqs
 - Rungs 0 + 1 done (torch+CUDA and a working YOLO pipeline in `fleet-ros2:l4t`).
@@ -32,6 +37,19 @@ ros2 run yolo_detector detector_node
 ros2 topic echo /detections --qos-reliability best_effort
 ```
 
+## Rung 3 — view in Foxglove
+The detector publishes `/image_annotated` automatically (disable with
+`ros2 run yolo_detector detector_node --ros-args -p publish_annotated:=false`). To view it:
+```bash
+# shell D — foxglove bridge (best-effort whitelist; serves ws://hyperion:8765):
+docker compose run --rm ros2-jetson bash run_bridge.sh
+```
+Then on the Mac: open Foxglove → **Open connection** → `ws://hyperion:8765` → add an **Image** panel
+→ set its topic to `/image_annotated`. Boxes + labels are already drawn into the frame, so it works
+regardless of Foxglove's `vision_msgs` overlay support. (Optional "proper" overlay: an Image panel on
+`/image_raw` with `/detections` added as an annotation — finickier across Foxglove versions, which is
+why `/image_annotated` is the reliable demo path.)
+
 ## Notes / gotchas
 - **QoS must match:** the camera publishes best-effort sensor QoS; the detector subscribes with the
   same. A reliable subscriber silently receives nothing from a best-effort publisher.
@@ -41,5 +59,11 @@ ros2 topic echo /detections --qos-reliability best_effort
   (`bbox.center.position.x`, `results[].hypothesis.class_id/.score`). If a build errors, confirm
   with `ros2 interface show vision_msgs/msg/Detection2D` and `.../BoundingBox2D`.
 - **GPU check:** `tegrastats` (or `jtop`) — GPU% should sit busy while the camera streams.
+- **Rebuild after editing the node:** this is an `ament_python` package, so `colcon build` copies the
+  source into `install/`. Re-run `colcon build` (or use `colcon build --symlink-install` once to make
+  future Python edits live without rebuilding).
+- **`/image_annotated` is bgr8** like `/image_raw`; if Foxglove shows a black panel, the bridge isn't
+  subscribing best-effort — confirm it was launched via `run_bridge.sh`.
 
-→ Next: **Rung 3** — Foxglove overlay of `/detections` + an annotated `/image_annotated` topic.
+→ Next: **Rung 4** — export to a TensorRT FP16 engine, swap it in for the torch forward pass, and
+measure the FPS/latency delta (the edge differentiator + the M6 Grafana story).

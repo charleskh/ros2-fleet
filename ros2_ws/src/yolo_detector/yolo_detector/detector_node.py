@@ -7,6 +7,13 @@ and pipeline proved in Rung 1 (detect_ultralytics.py / detect_manual.py), now wi
 graph so detections flow live. Inference stays Ultralytics-first through Rung 3; Rung 4 swaps the
 torch forward pass for a TensorRT engine while this node's plumbing stays put.
 
+Rung 3: it ALSO publishes an annotated sensor_msgs/Image on /image_annotated (boxes + labels drawn
+on the frame) — the reliable way to see detections in Foxglove (an Image panel on /image_annotated
+just works), vs. relying on a viewer to overlay the Detection2DArray itself. We reuse the SAME
+inference result (r.plot()) rather than running a second pass, so the overlay is nearly free. Drawing
+uses cv2 (pulled in by ultralytics) on an in-memory numpy array — that's the safe cv2 path; the L4T
+double-free is specific to cv2's GStreamer VideoCapture, which we never touch.
+
 WHY no cv_bridge: cv_bridge pulls OpenCV's GStreamer-linked build — the same one whose
 VideoCapture double-frees on this L4T image (see csi_camera). We unpack the Image buffer into a
 numpy array by hand instead: three lines, zero extra dependency.
@@ -40,10 +47,13 @@ class YoloDetector(Node):
         self.declare_parameter("device", 0)          # 0 = first CUDA device (Orin iGPU)
         self.declare_parameter("image_topic", "image_raw")
         self.declare_parameter("detections_topic", "detections")
+        self.declare_parameter("annotated_topic", "image_annotated")
+        self.declare_parameter("publish_annotated", True)   # set false to skip drawing (cheaper)
 
         g = lambda n: self.get_parameter(n).value  # noqa: E731
         self.conf = float(g("conf"))
         self.device = g("device")
+        self.publish_annotated = bool(g("publish_annotated"))
 
         # Load once at startup; the first ever run downloads the weights to the ultralytics cache.
         self.model = YOLO(g("model"))
@@ -51,11 +61,18 @@ class YoloDetector(Node):
         self.get_logger().info(f"Loaded {g('model')} on device {self.device}")
 
         self.pub = self.create_publisher(Detection2DArray, g("detections_topic"), 10)
+        # Annotated image goes out with sensor QoS (best-effort) like the camera — it's a large
+        # buffer and the foxglove_bridge subscribes best-effort (see run_bridge.sh).
+        self.ann_pub = (
+            self.create_publisher(Image, g("annotated_topic"), qos_profile_sensor_data)
+            if self.publish_annotated else None
+        )
         self.sub = self.create_subscription(
             Image, g("image_topic"), self.on_image, qos_profile_sensor_data
         )
         self.get_logger().info(
             f"Subscribed to '{g('image_topic')}' -> Detection2DArray on '{g('detections_topic')}'"
+            + (f" + annotated Image on '{g('annotated_topic')}'" if self.ann_pub else "")
         )
 
     def on_image(self, msg: Image):
@@ -97,6 +114,20 @@ class YoloDetector(Node):
             out.detections.append(det)
 
         self.pub.publish(out)
+
+        # Rung 3: annotated frame for Foxglove. r.plot() returns a fresh BGR uint8 HxWx3 array with
+        # the same boxes/labels drawn (reusing this frame's inference — no second pass).
+        if self.ann_pub is not None:
+            annotated = r.plot()
+            ann = Image()
+            ann.header = msg.header
+            ann.height = int(annotated.shape[0])
+            ann.width = int(annotated.shape[1])
+            ann.encoding = "bgr8"
+            ann.is_bigendian = 0
+            ann.step = ann.width * 3
+            ann.data = annotated.tobytes()
+            self.ann_pub.publish(ann)
 
 
 def main(args=None):
