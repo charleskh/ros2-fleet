@@ -132,6 +132,23 @@ RUN pip3 install --no-cache-dir ultralytics
 # so its resolver doesn't re-upgrade it. (ultralytics runs fine on numpy 1.x.)
 RUN pip3 install --no-cache-dir "numpy<2"
 
+# --- M3 Rung 4: TensorRT (STAGED — verify versions on the host, then uncomment) ---------------
+# TensorRT is the CUDA *toolkit* tier (CDI does NOT mount it — same finding as Rung 0), so it must be
+# baked here from the host's own L4T apt repo (already trusted above). Versions are JetPack-specific:
+# DISCOVER on hyperion first, then PIN to the host's exact versions (Rung-0 pattern):
+#   dpkg -l | grep -iE 'nvinfer|tensorrt'      # the package=version list to mirror
+#   ls /usr/src/tensorrt/bin/trtexec           # the builder binary trt_infer/build_engine need
+# JetPack 6.2 / r36.x ships TensorRT 10.3. Then uncomment + pin (the repo + key are set up above):
+# RUN set -eux; \
+#     apt-get update; \
+#     apt-get install -y --no-install-recommends \
+#         tensorrt \
+#         python3-libnvinfer \
+#         libnvinfer10 libnvinfer-plugin10 libnvonnxparsers10; \
+#     rm -rf /var/lib/apt/lists/*
+# Guard after building: docker compose run --rm ros2-jetson python3 -c "import tensorrt as t; print(t.__version__)"
+# Full plan + script usage → ros2_ws/rung4/README.md.
+
 WORKDIR /ros2_ws
 
 # Source ROS (and the built workspace, once it exists) in every interactive shell.

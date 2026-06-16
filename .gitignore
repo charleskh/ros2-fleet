@@ -16,3 +16,7 @@ __pycache__/
 ros2_ws/rung1/sample*.jpg
 ros2_ws/rung1/annotated_*.jpg
 *.pt
+
+# Rung 4 build artifacts — hardware-specific (built on the Orin, for the Orin), don't commit
+*.onnx
+*.engine
