@@ -123,6 +123,13 @@ RUN pip3 install --no-cache-dir \
 # Unpinned for now; pin `ultralytics==<ver>` once the next build confirms a known-good combo.
 RUN pip3 install --no-cache-dir ultralytics
 
+# numpy ABI pin: ultralytics pulls numpy 2.x from PyPI, but the jp6/cu126 torch 2.8.0 wheel is
+# built against the numpy 1.x C-ABI. With numpy 2.x present, `torch.from_numpy(...)` aborts with
+# "RuntimeError: Numpy is not available" the instant ultralytics hands a frame to torch in
+# preprocess(). numpy isn't missing — it's the wrong ABI. Force it back below 2.0 AFTER ultralytics
+# so its resolver doesn't re-upgrade it. (ultralytics runs fine on numpy 1.x.)
+RUN pip3 install --no-cache-dir "numpy<2"
+
 WORKDIR /ros2_ws
 
 # Source ROS (and the built workspace, once it exists) in every interactive shell.
