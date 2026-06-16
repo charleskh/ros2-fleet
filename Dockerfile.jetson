@@ -33,7 +33,8 @@ FROM ros:humble-ros-base
 # GStreamer capture double-frees); libegl1/libgles2 are the glvnd EGL/GLES loaders the NVIDIA
 # GStreamer plugins link against (CDI provides the NVIDIA impl + ICD). ros-humble-foxglove-bridge
 # streams topics to Foxglove on the Mac over a compressed WebSocket (port 8765) — the right way to
-# view images remotely instead of pushing raw frames over cross-machine DDS. Plus nano.
+# view images remotely instead of pushing raw frames over cross-machine DDS. ros-humble-vision-msgs
+# supplies Detection2DArray/BoundingBox2D for the yolo_detector node (M3 Rung 2). Plus nano.
 RUN set -eux; \
     apt-get update -o Acquire::AllowInsecureRepositories=true; \
     apt-get install -y --no-install-recommends --allow-unauthenticated curl ca-certificates; \
@@ -51,6 +52,7 @@ RUN set -eux; \
         gir1.2-gstreamer-1.0 \
         gir1.2-gst-plugins-base-1.0 \
         ros-humble-foxglove-bridge \
+        ros-humble-vision-msgs \
         nano; \
     rm -rf /var/lib/apt/lists/*
 

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>yolo_detector</name>
+  <version>0.1.0</version>
+  <description>
+    Subscribe to a camera Image topic, run a pretrained YOLO model (Ultralytics) on the GPU, and
+    publish vision_msgs/Detection2DArray. M3 Rung 2 of the Phase-1 perception ladder. Reusable on
+    any robot with a /image_raw publisher (a fleet capability, not robot-specific).
+  </description>
+  <maintainer email="charleskh@gmail.com">Charles Howard</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>vision_msgs</exec_depend>
+  <!-- Inference (ultralytics + torch) and the Image->numpy unpack are Python-only and live in the
+       Jetson image (Dockerfile.jetson), NOT declared here: there is no rosdep key for the
+       jetson-ai-lab torch wheel. NO cv_bridge / OpenCV dependency — cv_bridge pulls OpenCV's
+       GStreamer-linked build, the same one that double-frees on this L4T image (see csi_camera);
+       the node unpacks sensor_msgs/Image into numpy by hand instead. -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
