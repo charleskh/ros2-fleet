@@ -37,6 +37,17 @@ ros2 run yolo_detector detector_node
 ros2 topic echo /detections --qos-reliability best_effort
 ```
 
+## Rung 4 — run the live graph on the TensorRT engine (closes the M3 DoD)
+Build the FP16 engine once (see `../../rung4/`), then point the node at it:
+```bash
+ros2 run yolo_detector detector_node --ros-args \
+    -p backend:=trt -p engine_path:=/ros2_ws/rung4/yolov8n.fp16.engine
+```
+`backend:=trt` swaps the Ultralytics forward pass for the engine (~5.8x faster) via
+`yolo_detector/trt_backend.py` (the productized Rung1/Rung4 pre/post + TRT runner). The engine is
+**Orin-specific** and gitignored — build it on each target. Default `backend:=ultralytics` needs no
+engine and works out of the box.
+
 ## Rung 3 — view in Foxglove
 The detector publishes `/image_annotated` automatically (disable with
 `ros2 run yolo_detector detector_node --ros-args -p publish_annotated:=false`). To view it:
