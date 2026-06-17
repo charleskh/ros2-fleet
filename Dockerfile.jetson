@@ -132,20 +132,26 @@ RUN pip3 install --no-cache-dir ultralytics
 # so its resolver doesn't re-upgrade it. (ultralytics runs fine on numpy 1.x.)
 RUN pip3 install --no-cache-dir "numpy<2"
 
-# --- M3 Rung 4: TensorRT (STAGED — verify versions on the host, then uncomment) ---------------
-# TensorRT is the CUDA *toolkit* tier (CDI does NOT mount it — same finding as Rung 0), so it must be
-# baked here from the host's own L4T apt repo (already trusted above). Versions are JetPack-specific:
-# DISCOVER on hyperion first, then PIN to the host's exact versions (Rung-0 pattern):
-#   dpkg -l | grep -iE 'nvinfer|tensorrt'      # the package=version list to mirror
-#   ls /usr/src/tensorrt/bin/trtexec           # the builder binary trt_infer/build_engine need
-# JetPack 6.2 / r36.x ships TensorRT 10.3. Then uncomment + pin (the repo + key are set up above):
-# RUN set -eux; \
-#     apt-get update; \
-#     apt-get install -y --no-install-recommends \
-#         tensorrt \
-#         python3-libnvinfer \
-#         libnvinfer10 libnvinfer-plugin10 libnvonnxparsers10; \
-#     rm -rf /var/lib/apt/lists/*
+# --- M3 Rung 4: TensorRT 10.3 (toolkit tier — CDI doesn't mount it; bake it like CUDA) ---------
+# Pinned to the host's exact TensorRT (verified via `dpkg -l` on hyperion: 10.3.0.30-1+cuda12.5, the
+# JetPack 6.2 set) for reproducibility — same discipline as the CUDA toolkit above. The nvidia-l4t
+# repo + key from the Rung-0 block above are still configured, so we just update + install. The host
+# had only the runtime libs; we ALSO need the Python bindings + trtexec, which aren't installed there:
+#   libnvinfer10 / -plugin10 / libnvonnxparsers10  runtime + ONNX parser (loads/parses the engine)
+#   libnvinfer-bin                                 provides /usr/bin/trtexec (used by build_engine.sh)
+#   python3-libnvinfer                             the `import tensorrt` bindings trt_infer.py needs
+# Strict (= version) interdeps pull the lean/dispatch/vc-plugin libs at the matching version.
+# NOTE: TRT is built +cuda12.5 while we baked the 12.6 toolkit — fine within CUDA 12.x minor-compat;
+# if engine build/load ever complains about cuBLAS/cudart, this mismatch is the first suspect.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        libnvinfer10=10.3.0.30-1+cuda12.5 \
+        libnvinfer-plugin10=10.3.0.30-1+cuda12.5 \
+        libnvonnxparsers10=10.3.0.30-1+cuda12.5 \
+        libnvinfer-bin=10.3.0.30-1+cuda12.5 \
+        python3-libnvinfer=10.3.0.30-1+cuda12.5; \
+    rm -rf /var/lib/apt/lists/*
 # Guard after building: docker compose run --rm ros2-jetson python3 -c "import tensorrt as t; print(t.__version__)"
 # Full plan + script usage → ros2_ws/rung4/README.md.
 

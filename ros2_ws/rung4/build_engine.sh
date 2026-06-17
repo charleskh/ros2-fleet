@@ -19,9 +19,9 @@
 set -euo pipefail
 ONNX="${1:-yolov8n.onnx}"
 ENGINE="${2:-yolov8n.fp16.engine}"
-# trtexec ships with TensorRT; on Jetson it lives under /usr/src/tensorrt/bin. Override with TRTEXEC=
-# if the install put it elsewhere (e.g. on PATH as plain `trtexec`).
-TRTEXEC="${TRTEXEC:-/usr/src/tensorrt/bin/trtexec}"
+# trtexec comes from the apt `libnvinfer-bin` package, which installs it on PATH at /usr/bin/trtexec.
+# Override with TRTEXEC= if your install put it elsewhere (e.g. /usr/src/tensorrt/bin/trtexec).
+TRTEXEC="${TRTEXEC:-trtexec}"
 
 if [ ! -x "$TRTEXEC" ] && ! command -v "$TRTEXEC" >/dev/null 2>&1; then
   echo "trtexec not found at '$TRTEXEC'. Is TensorRT installed in the image? (see rung4/README.md)" >&2
