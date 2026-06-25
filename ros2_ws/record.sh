@@ -8,9 +8,12 @@
 #   docker compose run --rm ros2-jetson bash record.sh
 #
 # Override topics/name by env:  BAG=my_run TOPICS="/image_raw /detections" docker compose run ...
-set -euo pipefail
+# Source ROS BEFORE `set -u`: ROS's setup.bash dereferences AMENT_TRACE_SETUP_FILES while it's
+# unset, so `set -u` (nounset) aborts the source with "unbound variable". Strict flags guard OUR
+# logic below, not ROS's setup scripts.
 source /opt/ros/humble/setup.bash
 [ -f /ros2_ws/install/setup.bash ] && source /ros2_ws/install/setup.bash
+set -euo pipefail
 
 BAG="${BAG:-hyperion_run_$(date +%Y-%m-%d_%H%M%S)}"
 TOPICS="${TOPICS:-/image_raw /image_annotated /detections}"
