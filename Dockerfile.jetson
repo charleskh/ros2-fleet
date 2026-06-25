@@ -155,6 +155,16 @@ RUN set -eux; \
 # Guard after building: docker compose run --rm ros2-jetson python3 -c "import tensorrt as t; print(t.__version__)"
 # Full plan + script usage → ros2_ws/rung4/README.md.
 
+# --- M4: MCAP storage plugin for rosbag2 (record/replay) -------------------------------------
+# Deliberately the LAST apt layer: `ros2 bag record -s mcap` needs ros-humble-rosbag2-storage-mcap,
+# which is NOT in the ros:humble base (sqlite3 is the only built-in storage). Kept here, after the
+# expensive CUDA/torch/TensorRT layers, so adding it only rebuilds this small layer — the heavy GPU
+# layers stay cached. (ros apt source + key from the early block are still configured.)
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ros-humble-rosbag2-storage-mcap; \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /ros2_ws
 
 # Source ROS (and the built workspace, once it exists) in every interactive shell.

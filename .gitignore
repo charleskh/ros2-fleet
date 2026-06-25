@@ -20,3 +20,6 @@ ros2_ws/rung1/annotated_*.jpg
 # Rung 4 build artifacts — hardware-specific (built on the Orin, for the Orin), don't commit
 *.onnx
 *.engine
+
+# M4 recordings — bags are large binary captures, keep them out of git
+ros2_ws/bags/
