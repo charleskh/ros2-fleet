@@ -167,7 +167,23 @@ RUN set -eux; \
 
 WORKDIR /ros2_ws
 
-# Source ROS (and the built workspace, once it exists) in every interactive shell.
+# --- M5: bake the colcon workspace into the image (immutable deploy artifact) ----------------
+# The image IS the deployable — the built workspace ships inside it, so `docker compose up` needs no
+# build step on the robot. Deliberately the LAST heavy layer: it invalidates on any source edit, and
+# everything above (CUDA/torch/TRT) stays cached. .dockerignore keeps host build/ install/ log/ bags/
+# and the hardware-specific *.engine OUT of the context, so only source is copied and colcon builds
+# clean. The Orin-specific TRT engine is NOT baked — it's mounted in at runtime (see compose bringup).
+# NOTE: this bakes the workspace at build time; the `ros2-jetson` dev service still bind-mounts
+# ./ros2_ws over it for a live edit loop. The `bringup` service uses the baked copy (immutable).
+COPY ros2_ws/ /ros2_ws/
+RUN . /opt/ros/humble/setup.sh && colcon build
+
+# M5 bringup entrypoint (validate engine -> ros2 launch the whole graph). Baked at /usr/local/bin so
+# the narrow runtime volume mounts (rung4/, bags/) don't shadow it.
+COPY bringup-entrypoint.sh /usr/local/bin/bringup-entrypoint.sh
+RUN chmod +x /usr/local/bin/bringup-entrypoint.sh
+
+# Source ROS (and the built workspace) in every interactive shell.
 RUN echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc \
     && echo '[ -f /ros2_ws/install/setup.bash ] && source /ros2_ws/install/setup.bash' >> /root/.bashrc
 

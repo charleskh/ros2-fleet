@@ -71,3 +71,44 @@ services:
     # --- ESP32 / serial, for motor control later ---
     # devices:
     #   - /dev/ttyUSB0:/dev/ttyUSB0
+
+  # --- M5: one-command bring-up of the WHOLE perception graph (hyperion ONLY) ---
+  # `docker compose up bringup` starts camera + TRT detector + foxglove_bridge together, via the
+  # bringup launch file baked into the image. This is the DEPLOYMENT unit; the launch file is the
+  # node-graph unit (docs Concept G/J). Same L4T image + CDI/camera wiring as ros2-jetson, but:
+  #   - it runs the baked, immutable workspace (NO ./ros2_ws mount) — only narrow host paths below;
+  #   - the entrypoint validates the Orin TRT engine exists, then launches (never builds at runtime).
+  # Build + run on the Jetson:  docker compose up --build bringup
+  # Non-TRT fallback:           BACKEND=ultralytics docker compose up bringup
+  bringup:
+    build:
+      context: .
+      dockerfile: Dockerfile.jetson
+    image: fleet-ros2:l4t              # same image as ros2-jetson (whichever builds first wins the cache)
+    network_mode: host                 # cross-machine ROS2 discovery + foxglove_bridge on :8765
+    ipc: host                          # FastDDS SHM transport between the graph's nodes (see ros2 svc)
+    restart: unless-stopped            # robot behaviour: bring the graph back after a crash/reboot
+    environment:
+      - ROS_DOMAIN_ID=10
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - __EGL_VENDOR_LIBRARY_FILENAMES=/usr/lib/aarch64-linux-gnu/tegra-egl/nvidia.json
+      - BACKEND=${BACKEND:-trt}        # override: BACKEND=ultralytics docker compose up bringup
+      - ENGINE=${ENGINE:-/ros2_ws/rung4/yolov8n.fp16.engine}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              capabilities: [gpu]
+              device_ids:
+                - nvidia.com/gpu=all
+    volumes:
+      # NARROW mounts only — the workspace is baked into the image (immutable). We mount just the
+      # host-specific / persistent paths: the gitignored TRT engine (built on THIS Orin in rung4/),
+      # and the recordings dir so bags survive the container.
+      - ./ros2_ws/rung4:/ros2_ws/rung4
+      - ./ros2_ws/bags:/ros2_ws/bags
+      - /tmp/argus_socket:/tmp/argus_socket   # host nvargus-daemon (CSI camera)
+    devices:
+      - /dev/video0:/dev/video0        # the IMX219 sensor node
+    entrypoint: ["/usr/local/bin/bringup-entrypoint.sh"]

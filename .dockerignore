@@ -1,0 +1,20 @@
+# Keep the Docker build context clean so the M5 immutable image bakes ONLY source, never stale
+# host build artifacts. Mirrors .gitignore's build/runtime entries. Without this, `COPY ros2_ws/`
+# would drag in a host colcon build, recordings, and the (huge, hardware-specific) TRT engine.
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+ros2_ws/bags/
+**/__pycache__/
+*.py[cod]
+
+# Hardware-specific / large artifacts — provisioned at runtime via volume mount, never baked.
+*.engine
+*.onnx
+*.pt
+
+# Rung 1 sample images
+ros2_ws/rung1/sample*.jpg
+ros2_ws/rung1/annotated_*.jpg
+
+.git/

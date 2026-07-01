@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>bringup</name>
+  <version>0.1.0</version>
+  <description>
+    Launch the whole Phase-1 perception graph (camera + TRT detector + foxglove bridge) in one
+    process group, so `docker compose up` brings the robot up with one command (M5). Container is
+    the deployment unit; this launch file is the node-graph unit. See docs Concept G-J.
+  </description>
+  <maintainer email="charleskh@gmail.com">Charles Howard</maintainer>
+  <license>MIT</license>
+
+  <!-- exec_depend, not build_depend: a launch-only package builds nothing, it just needs these
+       packages present at RUN time so `ros2 launch bringup ...` can spawn their executables. -->
+  <exec_depend>csi_camera</exec_depend>
+  <exec_depend>yolo_detector</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
