@@ -56,9 +56,9 @@ red→green flip is the end-to-end proof the cross-host scrape works.
   header timestamps**.
 - **Rung 2 — Jetson hardware** ✅ `jetson-exporter/` (jtop client → :9809): GPU load/freq,
   thermal zones, and the **ina3221 power rails (W)** + RAM. Runs on hyperion via jtop.service.
-- **Rung 3 — liveness / containers** ✅ cAdvisor on hyperion (:8080) for per-container
-  CPU/mem; per-node liveness is Prometheus `up{job=…}` (dead node → 0). Kill a node →
-  panel flips red.
+- **Rung 3 — liveness** ✅ per-node liveness via Prometheus `up{job=…}` (dead node → 0);
+  kill a node → panel flips red. (cAdvisor per-container metrics dropped — incompatible with
+  the vehicle's Docker 29 overlayfs/containerd-snapshotter store; see `state/decisions.md`.)
 - **Rung 4 — logs (optional)** — Loki + Promtail → Grafana Logs panel.
 - **Rung 5 — dashboard as code + DoD** — checked-in dashboard JSON: FPS, latency p50/p95,
   thermals/power, per-node up/down.

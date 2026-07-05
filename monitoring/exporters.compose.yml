@@ -59,32 +59,10 @@ services:
       # in here connects to it. Socket is root:jtop 0660 and the container runs as root (owner) -> ok.
       - /run/jtop.sock:/run/jtop.sock
 
-  # Rung 3: per-CONTAINER CPU/mem/net (cAdvisor). Complements per-target liveness (Prometheus'
-  # up{job=...}, which already flips 0 when a node's /metrics goes away) with the resource view:
-  # how much CPU/RAM each container (bringup graph, the exporters) is actually using.
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: fleet-cadvisor
-    restart: unless-stopped
-    privileged: true            # cAdvisor needs broad read access to host cgroups/containers
-    network_mode: host          # expose :8080 on the HOST so caliban scrapes hyperion:8080
-    cgroup: host                # SHARE the host cgroup namespace. On cgroup v2 Docker isolates each
-                                # container's cgroupns, so cAdvisor would see only its OWN cgroup
-                                # (every series id="/"); host cgroupns lets it see all containers.
-    devices:
-      - /dev/kmsg
-    command:
-      # docker_only + disabling the heavy/irrelevant collectors keeps cAdvisor light on the Orin
-      # and avoids per-cpu/process series we don't dashboard (cardinality + CPU cost).
-      - '--docker_only=true'
-      - '--housekeeping_interval=10s'
-      - '--disable_metrics=percpu,sched,tcp,udp,advtcp,process,hugetlb,referenced_memory,cpu_topology,resctrl'
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      # docker_only needs the Docker API to enumerate + NAME containers. Without it cAdvisor sees
-      # only the root cgroup (every series id="/", no name= label). Mount the socket read-only.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
+  # Rung 3 note — per-container CPU/mem was planned via cAdvisor, but cAdvisor is INCOMPATIBLE with
+  # this host's Docker 29 storage driver ("overlayfs" = the containerd-snapshotter image store):
+  # it hard-codes a lookup into /var/lib/docker/image/overlay2/layerdb/mounts/<id>/mount-id, which
+  # doesn't exist under the snapshotter, so it aborts every container and reports only the root
+  # cgroup. Not worth downgrading the host storage driver for a nice-to-have. Rung 3's DoD — per-node
+  # liveness + the kill-a-node demo — is delivered by Prometheus `up{job=...}` (0 when a node's
+  # /metrics disappears); host CPU/mem is covered by node-exporter above. See state/decisions.md.
