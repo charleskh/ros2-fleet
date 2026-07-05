@@ -24,6 +24,15 @@ scrape_configs:
           host: hyperion
           role: vehicle
 
+  # VEHICLE tegra hardware (Rung 2): GPU load, thermal zones, ina3221 power rails (W).
+  # jetson-exporter on hyperion (:9809), via the host jtop.service. DOWN unless it's running there.
+  - job_name: jetson
+    static_configs:
+      - targets: ["hyperion:9809"]
+        labels:
+          host: hyperion
+          role: vehicle
+
   # APP metrics from the detector node (Rung 1): inference latency, FPS, end-to-end latency.
   # The node's own prometheus_client endpoint (:9808 on hyperion, host network via bringup).
   # DOWN unless the perception graph is running (docker compose up bringup) — so this target's

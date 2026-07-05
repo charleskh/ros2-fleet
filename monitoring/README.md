@@ -54,8 +54,8 @@ red→green flip is the end-to-end proof the cross-host scrape works.
 - **Rung 1 — app metrics** — `prometheus_client` endpoint on the detector node: inference
   latency (histogram), FPS (counter), detections/frame, + **end-to-end latency from ROS
   header timestamps**.
-- **Rung 2 — Jetson hardware** — tegra/`jetson-stats` exporter: GPU util, temps, **power
-  rails (W)**. Closes the parked "jtop not installed" loop.
+- **Rung 2 — Jetson hardware** ✅ `jetson-exporter/` (jtop client → :9809): GPU load/freq,
+  thermal zones, and the **ina3221 power rails (W)** + RAM. Runs on hyperion via jtop.service.
 - **Rung 3 — liveness / containers** — cAdvisor for per-container CPU/mem; kill a node →
   panel flips red.
 - **Rung 4 — logs (optional)** — Loki + Promtail → Grafana Logs panel.

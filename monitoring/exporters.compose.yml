@@ -44,3 +44,17 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     volumes:
       - /:/host:ro,rslave       # read-only view of the host's /, /proc, /sys for real metrics
+
+  # Rung 2: Jetson tegra metrics — GPU load, thermal zones, and the ina3221 POWER RAILS (W).
+  # The robotics-new signal node-exporter can't provide (and whose tegra /sys hangs its collectors).
+  # Reads via jetson-stats' jtop client, which talks to the host jtop.service over /run/jtop.sock.
+  jetson-exporter:
+    build: ./jetson-exporter
+    image: fleet-jetson-exporter:latest
+    container_name: fleet-jetson-exporter
+    restart: unless-stopped
+    network_mode: host          # expose :9809 on the HOST so caliban scrapes hyperion:9809
+    volumes:
+      # The host jtop.service owns the tegra sensors and publishes them on this socket; the client
+      # in here connects to it. Socket is root:jtop 0660 and the container runs as root (owner) -> ok.
+      - /run/jtop.sock:/run/jtop.sock
