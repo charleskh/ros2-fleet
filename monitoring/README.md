@@ -60,5 +60,7 @@ red→green flip is the end-to-end proof the cross-host scrape works.
   kill a node → panel flips red. (cAdvisor per-container metrics dropped — incompatible with
   the vehicle's Docker 29 overlayfs/containerd-snapshotter store; see `state/decisions.md`.)
 - **Rung 4 — logs (optional)** — Loki + Promtail → Grafana Logs panel.
-- **Rung 5 — dashboard as code + DoD** — checked-in dashboard JSON: FPS, latency p50/p95,
-  thermals/power, per-node up/down.
+- **Rung 5 — dashboard as code + DoD** ✅ `grafana/provisioning/dashboards/fleet-overview.json`
+  auto-provisions (13 panels): FPS, inference vs e2e latency p50/p95, power rails, thermals,
+  GPU load/RAM, per-node liveness (kill-a-node → red), host CPU/RAM. Open **"Fleet — Hyperion
+  Perception (live robot)"** in Grafana → the DoD screenshot.
