@@ -79,6 +79,9 @@ services:
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
+      # docker_only needs the Docker API to enumerate + NAME containers. Without it cAdvisor sees
+      # only the root cgroup (every series id="/", no name= label). Mount the socket read-only.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
