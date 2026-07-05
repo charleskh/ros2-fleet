@@ -23,6 +23,23 @@ services:
       - '--path.rootfs=/host'
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
+      # Jetson gotcha: node-exporter's DEFAULT collector set includes tegra hardware collectors
+      # (hwmon/thermal_zone/rapl/powersupplyclass) that HANG reading the Orin's /sys — each
+      # /metrics request blocks forever, requests pile up to node-exporter's 40-concurrent cap,
+      # then every scrape gets "503 concurrent requests reached" and Prometheus times out.
+      # Fix: disable defaults and whitelist only the generic host collectors. Tegra GPU/power/
+      # thermal rails are Rung 2's job (a dedicated jetson-stats exporter), not this one.
+      - '--collector.disable-defaults'
+      - '--collector.cpu'
+      - '--collector.meminfo'
+      - '--collector.loadavg'
+      - '--collector.stat'          # boot time, context switches, forks
+      - '--collector.vmstat'
+      - '--collector.diskstats'     # disk I/O (bags hammer storage)
+      - '--collector.netdev'        # per-interface throughput
+      - '--collector.uname'         # node_uname_info — handy dashboard label
+      - '--collector.time'          # node_time_seconds — clock/skew sanity
+      - '--collector.filesystem'    # disk free — bags fill the eMMC; watch it
       # ignore container/virtual filesystems so disk metrics reflect the real Jetson storage
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     volumes:
