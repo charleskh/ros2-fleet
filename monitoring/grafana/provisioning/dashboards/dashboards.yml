@@ -1,0 +1,14 @@
+# Dashboard PROVIDER — tells Grafana to load any dashboard JSON checked into this repo path
+# on startup (dashboards-as-code). The dashboards themselves land in Rung 5; this is the plumbing.
+apiVersion: 1
+
+providers:
+  - name: fleet-dashboards
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30    # re-read the dir every 30s so edited JSON hot-reloads
+    allowUiUpdates: false        # UI edits don't override the repo (export the JSON instead)
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

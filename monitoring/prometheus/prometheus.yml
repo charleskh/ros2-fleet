@@ -1,0 +1,25 @@
+# Ground-station scrape config (caliban). What Prometheus pulls, and how often.
+#
+# The scrape model (Charles's home turf): Prometheus PULLS /metrics from each target on an
+# interval; each `job` is a set of targets sharing a purpose. `up{job=...}` is auto-generated
+# per target (1 = last scrape ok, 0 = failed) — that's the per-node liveness signal Rung 3 leans on.
+
+global:
+  scrape_interval: 5s        # robot telemetry moves fast; 5s keeps FPS/latency graphs live
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Self-scrape: proves the stack is alive before any vehicle target exists (first light).
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # VEHICLE host metrics (node-exporter on hyperion). DOWN until exporters.compose.yml runs
+  # on the Jetson — the red→green flip is Rung 0's end-to-end proof of the cross-host scrape.
+  # "hyperion" resolves via extra_hosts in docker-compose.yml → 10.0.0.64.
+  - job_name: hyperion-node
+    static_configs:
+      - targets: ["hyperion:9100"]
+        labels:
+          host: hyperion
+          role: vehicle

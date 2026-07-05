@@ -1,0 +1,29 @@
+# Fleet monitoring — VEHICLE exporters (runs on hyperion, the Jetson).
+#
+# The robot side of the ground-station topology: these containers only EXPOSE /metrics on the
+# vehicle's host ports; caliban's Prometheus reaches across the LAN and scrapes them. Nothing
+# here stores or graphs — that's the ground station's job.
+#
+# Bring up ON HYPERION:
+#   docker compose -f monitoring/exporters.compose.yml up -d
+#   verify locally:  curl -s localhost:9100/metrics | head
+# Then on caliban, Prometheus target hyperion-node flips DOWN→UP within one scrape (5s).
+#
+# Grows across the M6 rungs: Rung 2 adds a Jetson tegra/power exporter; Rung 3 adds cAdvisor.
+
+services:
+  # Rung 0: standard host metrics — CPU, memory, disk, network, filesystem.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: fleet-node-exporter
+    restart: unless-stopped
+    network_mode: host          # bind :9100 on the HOST so caliban can scrape hyperion:9100
+    pid: host                   # see host processes, not just the container's
+    command:
+      - '--path.rootfs=/host'
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      # ignore container/virtual filesystems so disk metrics reflect the real Jetson storage
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /:/host:ro,rslave       # read-only view of the host's /, /proc, /sys for real metrics

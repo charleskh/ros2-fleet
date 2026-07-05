@@ -1,0 +1,12 @@
+# Grafana datasource AS CODE — no click-ops. Grafana reads this on startup and wires itself
+# to the Prometheus container. URL uses the compose service name (Docker DNS), not an IP.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: fleet-prometheus
+    access: proxy               # Grafana's backend proxies queries to Prometheus (not the browser)
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false             # provisioned = source of truth is the repo, not the UI
