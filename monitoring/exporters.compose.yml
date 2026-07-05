@@ -68,6 +68,9 @@ services:
     restart: unless-stopped
     privileged: true            # cAdvisor needs broad read access to host cgroups/containers
     network_mode: host          # expose :8080 on the HOST so caliban scrapes hyperion:8080
+    cgroup: host                # SHARE the host cgroup namespace. On cgroup v2 Docker isolates each
+                                # container's cgroupns, so cAdvisor would see only its OWN cgroup
+                                # (every series id="/"); host cgroupns lets it see all containers.
     devices:
       - /dev/kmsg
     command:
