@@ -19,20 +19,22 @@ from rclpy.qos import qos_profile_sensor_data  # noqa: E402
 from sensor_msgs.msg import Image  # noqa: E402
 
 
-def gst_pipeline(sensor_id, cap_w, cap_h, flip_method, disp_w, disp_h):
+def gst_pipeline(sensor_id, cap_w, cap_h, flip_method, disp_w, disp_h, sensor_fps):
     """nvarguscamerasrc (Argus/ISP) -> nvvidconv (GPU convert + optional flip) -> BGR -> appsink.
 
     appsink ``max-buffers=1 drop=true`` keeps us on the latest frame (low latency); ``sync=false``
     lets it deliver as fast as captured rather than throttling to the clock.
 
-    We deliberately do NOT pin a framerate on the sensor caps: some resolutions only have a 60 fps
-    sensor mode (e.g. 1280x720), and requesting 30 fps there matches no mode, so Argus delivers no
-    frames at all. Let the sensor run at its native rate; our publish timer + ``drop=true`` set the
-    effective output rate.
+    Framerate MUST be pinned on the NVMM caps, and it must MATCH a real sensor mode. Measured on the
+    IMX219 (M6 Rung 1): with NO framerate, nvarguscamerasrc free-runs at ~1.5 fps (30 frames took
+    >40 s raw); with ``framerate=60/1`` it delivers full rate (30 frames in ~1.2 s). The earlier
+    "no frames at all" was from requesting 30/1 on the 720p mode, which is 60-fps-ONLY, so 30/1
+    matched no mode — the fix is 60/1 (the mode's real rate), NOT dropping the cap. The publish
+    timer + ``drop=true`` then downsample to the desired OUTPUT rate at low latency.
     """
     return (
         f"nvarguscamerasrc sensor-id={sensor_id} ! "
-        f"video/x-raw(memory:NVMM),width={cap_w},height={cap_h} ! "
+        f"video/x-raw(memory:NVMM),width={cap_w},height={cap_h},framerate={sensor_fps}/1 ! "
         f"nvvidconv flip-method={flip_method} ! "
         f"video/x-raw,width={disp_w},height={disp_h},format=BGRx ! "
         f"videoconvert ! video/x-raw,format=BGR ! "
@@ -49,7 +51,9 @@ class CsiCameraNode(Node):
         self.declare_parameter("capture_height", 720)
         self.declare_parameter("display_width", 1280)
         self.declare_parameter("display_height", 720)
-        self.declare_parameter("framerate", 30)
+        self.declare_parameter("framerate", 30)          # OUTPUT rate: the ROS publish timer
+        self.declare_parameter("sensor_framerate", 60)   # SENSOR capture rate — MUST match a real
+        #                                                  mode (720p on the IMX219 is 60-fps-only)
         self.declare_parameter("flip_method", 0)  # 0=none, 2=180deg (cam mounted upside down)
         self.declare_parameter("frame_id", "csi_camera")
         self.declare_parameter("topic", "image_raw")
@@ -63,6 +67,7 @@ class CsiCameraNode(Node):
         pipeline_str = gst_pipeline(
             g("sensor_id"), g("capture_width"), g("capture_height"),
             g("flip_method"), g("display_width"), g("display_height"),
+            g("sensor_framerate"),
         )
         self.get_logger().info(f"Opening CSI camera:\n{pipeline_str}")
 
