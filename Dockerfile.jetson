@@ -132,6 +132,12 @@ RUN pip3 install --no-cache-dir ultralytics
 # so its resolver doesn't re-upgrade it. (ultralytics runs fine on numpy 1.x.)
 RUN pip3 install --no-cache-dir "numpy<2"
 
+# --- M6 Rung 1: Prometheus client (app metrics endpoint in the detector node) ------------------
+# Pure-Python, from PyPI, no CUDA/numpy ABI entanglement — the detector node imports it to expose
+# /metrics on :9808 (inference latency, FPS, end-to-end latency). Off-the-shelf lib; OUR metric
+# definitions live in yolo_detector/detector_node.py. Unpinned (stable, tiny surface).
+RUN pip3 install --no-cache-dir prometheus_client
+
 # --- M3 Rung 4: TensorRT 10.3 (toolkit tier — CDI doesn't mount it; bake it like CUDA) ---------
 # Pinned to the host's exact TensorRT (verified via `dpkg -l` on hyperion: 10.3.0.30-1+cuda12.5, the
 # JetPack 6.2 set) for reproducibility — same discipline as the CUDA toolkit above. The nvidia-l4t

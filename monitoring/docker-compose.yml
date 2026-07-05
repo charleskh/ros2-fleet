@@ -24,7 +24,11 @@ services:
     extra_hosts:
       - "hyperion:10.0.0.64"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Mount the DIRECTORY, not the single file: an editor's atomic-rename swaps the file's inode,
+      # and a single-file bind mount keeps pointing at the STALE inode (POST /-/reload then reads old
+      # config). Mounting the dir means the filename is re-resolved on each read, so editing
+      # prometheus.yml + `curl -X POST /-/reload` picks up changes with no container recreate.
+      - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

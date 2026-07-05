@@ -23,3 +23,15 @@ scrape_configs:
         labels:
           host: hyperion
           role: vehicle
+
+  # APP metrics from the detector node (Rung 1): inference latency, FPS, end-to-end latency.
+  # The node's own prometheus_client endpoint (:9808 on hyperion, host network via bringup).
+  # DOWN unless the perception graph is running (docker compose up bringup) — so this target's
+  # up/down doubles as "is the detector alive?", the Rung 3 kill-a-node signal.
+  - job_name: detector
+    static_configs:
+      - targets: ["hyperion:9808"]
+        labels:
+          host: hyperion
+          role: vehicle
+          node: yolo_detector
