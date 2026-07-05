@@ -7,6 +7,8 @@ when handling the nvargus NVMM pipeline. We map the appsink buffer into bytes an
 sensor_msgs/Image by hand — no OpenCV in the process at all. Reusable on any Jetson + CSI camera
 (a Tier-2 fleet capability; see datasmith docs/phase1-hyperion-perception.md).
 """
+import array
+
 import gi
 
 gi.require_version("Gst", "1.0")
@@ -100,7 +102,11 @@ class CsiCameraNode(Node):
             self.get_logger().warn("Failed to map GStreamer buffer", throttle_duration_sec=2.0)
             return
         try:
-            data = bytes(mapinfo.data)   # copy the frame out before unmapping
+            # Copy the frame out before unmapping. Use array.array('B'), NOT bytes: assigning a
+            # bytes/2.76MB to the Image.data uint8[] field takes ~580ms on Humble (rclpy validates
+            # element-by-element through the Python↔C++ bridge), which alone caps this node at
+            # ~1.7 fps. array.array('B') hits rclpy's fast memcpy path (~0.3ms). Measured, M6 Rung 1.
+            data = array.array("B", mapinfo.data)   # ~0.3ms to later assign, vs ~580ms for bytes
             size = mapinfo.size
         finally:
             buf.unmap(mapinfo)

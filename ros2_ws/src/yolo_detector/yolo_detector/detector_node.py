@@ -26,6 +26,7 @@ Run (after `colcon build` + sourcing install/setup.bash), camera already publish
         -p backend:=trt -p engine_path:=/ros2_ws/rung4/yolov8n.fp16.engine     # TensorRT FP16
 Verify: ros2 topic echo /detections --qos-reliability best_effort
 """
+import array
 import time
 
 import numpy as np
@@ -204,7 +205,10 @@ class YoloDetector(Node):
             ann.encoding = "bgr8"
             ann.is_bigendian = 0
             ann.step = ann.width * 3
-            ann.data = annotated.tobytes()
+            # array.array('B'), NOT bytes: assigning bytes to the Image.data uint8[] field takes
+            # ~580ms on Humble (rclpy per-element validation); array.array hits the fast memcpy
+            # path (~0.3ms). Same fix as csi_camera — see its tick(). Measured, M6 Rung 1.
+            ann.data = array.array("B", annotated.tobytes())
             self.ann_pub.publish(ann)
 
 
