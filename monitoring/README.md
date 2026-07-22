@@ -11,10 +11,13 @@ Two hosts, prod/fleet-shaped — the **vehicle only emits, the ground station sc
    hyperion (vehicle, 10.0.0.64)              caliban (ground station, 10.0.0.29)
    └─ exporters.compose.yml                   └─ docker-compose.yml
         node-exporter        :9100  ◀──scrape──  prometheus  :9090
-        (rung2) jetson/power :9101  ◀──scrape──       │
-        (rung3) cAdvisor     :8080  ◀──scrape──       ▼
-                                                  grafana     :3000
+        jetson-exporter      :9809  ◀──scrape──┘      │
+        detector /metrics    :9808  ◀──scrape──┘      ▼
+        (in the bringup graph)                    grafana     :3000
 ```
+
+The detector `:9808` target lives in the perception graph (`docker compose up bringup`), not in
+`exporters.compose.yml` — it's up whenever the robot is running.
 
 Why not everything on the Jetson? Prometheus + Grafana would steal CPU/RAM from the Orin's
 inference budget. Keeping them on caliban is the real fleet pattern: the vehicle is cheap to
