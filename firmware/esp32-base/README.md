@@ -15,8 +15,9 @@ bench smoke test for the IMU; it grows into the micro-ROS node (`/cmd_vel` in, `
   full 2S pack); the SparkFun TB6612FNG (1.2A continuous) it replaced is now a bench spare.
 - **Encoders:** none (the stock motors have two terminals only).
 - **Power:** the ESP32 is powered **only** from the Jetson's USB (no buck converter, so no 5V
-  back-feed). The MDD10A's inputs are pulled low on board, so if the ESP32 stops driving them the
-  motors stop; the firmware dead-man timer covers a hung ESP32.
+  back-feed). The firmware dead-man timer stops the motors when commands stop. **To verify on
+  arrival:** that the motors stay still with the ESP32 unpowered or its PWM pins floating. If not,
+  add 10k pull-downs on PWM1/PWM2.
 
 ## Pin map
 
