@@ -10,17 +10,20 @@ bench smoke test for the IMU; it grows into the micro-ROS node (`/cmd_vel` in, `
   logic perfboard, so the dev board itself is never soldered.
 - **IMU:** Adafruit BNO055 (on-chip sensor fusion), I2C at 0x28, on its own chassis pad via a short
   twisted cable.
-- **Motor driver:** SparkFun TB6612FNG breakout, socketed on a separate power perfboard so motor
-  current never runs under the MCU.
+- **Motor driver:** Cytron MDD10A (Rev2.0, 3.3V logic), sign-magnitude PWM + DIR per channel, bolted
+  to the chassis with its own terminals. Chosen because the motors measure 2.1Ω (≈ 3.5–4A stall at a
+  full 2S pack); the SparkFun TB6612FNG (1.2A continuous) it replaced is now a bench spare.
+- **Encoders:** none (the stock motors have two terminals only).
 - **Power:** the ESP32 is powered **only** from the Jetson's USB (no buck converter, so no 5V
-  back-feed). If the ESP32 loses power, the TB6612 logic does too and the motors cannot run.
+  back-feed). The MDD10A's inputs are pulled low on board, so if the ESP32 stops driving them the
+  motors stop; the firmware dead-man timer covers a hung ESP32.
 
 ## Pin map
 
 | Function | GPIO | Notes |
 |---|---|---|
-| TB6612 PWMA, AIN1, AIN2, STBY, BIN1, BIN2, PWMB | 4, 5, 6, 7, 15, 16, 17 | adjacent on one header row |
-| Encoders A1, B1, A2, B2 | 10, 11, 12, 13 | reserved; encoders not yet confirmed |
+| MDD10A PWM1, DIR1 (left track) | 4, 5 | adjacent on one header row |
+| MDD10A PWM2, DIR2 (right track) | 6, 7 | adjacent; MDD10A GND to ESP32 GND |
 | BNO055 SDA, SCL | 41, 42 | adjacent, bottom row |
 | Battery sense (100k / 47k divider) | 1 | ADC1; 8.4V full pack reads ~2.7V |
 
